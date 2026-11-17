@@ -1,0 +1,9 @@
+{
+  "name": "Tokyo meetup",
+  "timezone": "Asia/Tokyo",
+  "sessions": [
+    { "title": "Doors open", "start": "2026-11-12T09:00:00", "end": "2026-11-12T09:30:00", "venue": "Lobby" },
+    { "title": "Keynote", "start": "2026-11-12T09:30", "end": "2026-11-12T10:15", "venue": "Hall" },
+    { "title": "Remote Q&A", "start": "2026-11-12T01:00:00Z", "end": "2026-11-12T01:30:00Z", "venue": "Hall" }
+  ]
+}

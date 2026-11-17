@@ -3,6 +3,8 @@
 A live conference timeline for attendees: what's on **now** and **next**, where you are, and whether
 you'll make it to your next session in time.
 
+**Live demo:** <https://bnelford.github.io/nowline/>
+
 ![NowLine timeline: rooms as swim lanes, a red now-line, the now/next strip, and a walk-time warning on the personal "Me" lane](docs/screenshot.png)
 
 Every room is a swim lane and a red line marks the current time. NowLine reads the schedule exports
@@ -42,22 +44,55 @@ around the current time, so the now-line always has something on it. The **▶ T
 90-second guided tour, and `#tour` in the URL opens it too.
 
 To host it, copy `index.html`, `src/`, `vendor/` and `assets/` to any static host (GitHub Pages,
-Cloudflare Pages, Netlify, S3, an nginx directory). Nothing needs compiling.
+Cloudflare Pages, Netlify, S3, an nginx directory). Nothing needs compiling. `node scripts/site.js`
+copies exactly those into `_site/`. All paths are relative, so the site also works from a sub-path.
+
+### Deploy your own
+
+**GitHub Pages.** Fork the repo, then in *Settings → Pages* set *Source* to **GitHub Actions**.
+[`.github/workflows/pages.yml`](.github/workflows/pages.yml) runs the unit tests and publishes the
+site on every push to `main` (or from *Actions → Deploy to GitHub Pages → Run workflow*). It ends up at
+`https://<you>.github.io/<repo>/`, and room signs default to that address.
+
+**Feed relay (optional).** Pages only serves static files, so the [relay](#feed-relay-optional) is
+deployed separately as a Cloudflare Worker:
+
+```sh
+npx wrangler login
+npx wrangler deploy        # uses wrangler.toml → worker "nowline-relay"
+```
+
+Then paste its `…/?url=` address into **Relay URL** under **Load schedule…**.
 
 ## Loading a schedule
 
 Use **Load schedule…** to choose a file, paste text, or fetch a link (fetching needs the
-[relay](#feed-relay-optional)). Times display in the device's time zone. Tick **Shift dates to
-today** to try out a past conference as if it were live.
+[relay](#feed-relay-optional)). Tick **Shift dates to today** to try out a past conference as if it
+were live: whole days are moved so the first day is today in the event's time zone, keeping each
+session's wall-clock time.
 
 | Source | What to load | Notes |
 | --- | --- | --- |
 | **Sched** (KubeCon, Open Source Summit, …) | The whole-event iCal feed: on the event's Sched site, log out, then go to *Mobile App + iCal* | `LOCATION` becomes the room. "(Level 2)"-style hints group rooms into floors. Titles like `Talk - Speaker, Company` are split into title and speakers. `TZID`, `X-WR-TIMEZONE`, `DURATION` and folded lines are handled. |
 | **Swapcard, Cvent**, other whole-event `.ics` | The event calendar export | Parsed the same way as Sched. Only Sched-style feeds are covered by tests. |
 | **pretalx / frab** | `schedule.json` (`…/schedule/export/schedule.json`) | Uses the conference title, rooms, `date` + `duration`, `track` (or `type`), persons, and abstract. |
-| **Sessionize** | API "All data" JSON | Unscheduled sessions are skipped. Times have no offset, so they're read in the device's zone. |
+| **Sessionize** | API "All data" JSON | Unscheduled sessions are skipped. Times have no offset or zone, so set the event's zone under **Time zone…** (a top-level `timeZone`/`timezone` is used if present). |
 | **Sessionize** | API "Schedule grid" JSON | Same caveat on time zones. |
 | **Simple JSON** | See below | The only format that can describe buildings, walk times, room directions and routes. |
+
+### Time zones
+
+Every event has a time zone. NowLine takes it from the schedule when it can: `X-WR-TIMEZONE` or
+the events' `TZID` in an `.ics`, `time_zone_name` in pretalx/frab, or `timezone` in simple JSON.
+Otherwise it uses the device's zone, and you can set the event's zone under **Time zone…**. Times
+written without an offset (Sessionize, floating `.ics` times) are read in the event's zone.
+
+**Time zone…** also picks where times are *shown*: the event's zone (default), your device's zone,
+or any IANA zone from a searchable list. The choice is saved per event. When times are shown in a
+zone other than the device's, a short label such as `PST` or `UTC+1` appears next to the clock.
+"Now", the live timeline, "starting soon", and conflict and walk-time checks all work on real
+instants, so they don't change with the display zone. DST is handled through `Intl.DateTimeFormat`.
+
 
 Everything is converted to one internal shape (documented at the top of [`src/schedule.js`](src/schedule.js)).
 Imported schedules without geometry get a schematic map layout and default walk times: 1 minute
@@ -72,6 +107,7 @@ within a building and 8 minutes between buildings (3 minutes between floors for 
     "hq":   { "name": "HQ",   "color": "#7cc4ff", "walk": { "hq": 1, "cafe": 4 } },
     "cafe": { "name": "Cafe", "color": "#ffb066", "walk": { "hq": 4, "cafe": 1 } }
   },
+  "timezone": "America/Denver",
   "venues": [
     { "id": "Stage", "name": "Stage", "building": "hq", "where": "Ground floor, through the main doors" },
     { "id": "Cafe",  "name": "Cafe",  "building": "cafe" }
@@ -88,15 +124,17 @@ within a building and 8 minutes between buildings (3 minutes between floors for 
 }
 ```
 
-- `sessions` is required. Each session needs `title`, `start` and `end` (anything `Date` can parse;
-  include an offset). `venue` (or `room`) defaults to `"Main"`. `speakers` may be a list, or a
+- `sessions` is required. Each session needs `title`, `start` and `end` (anything `Date` can parse).
+  ISO times without an offset, like `2026-11-12T09:00`, are read in `timezone`.
+- `timezone` (optional) is the event's IANA zone, for example `"Europe/Brussels"`. `venue` (or `room`) defaults to `"Main"`. `speakers` may be a list, or a
   single `speaker` string. `id` is optional.
 - `buildings[*].walk` gives minutes from this building to each other building.
 - `venues[*].where` is shown in directions and on signs. `routes` holds turn-by-turn text keyed by
   `"<from building id>><to building id>"`, for example `"hq>cafe"`.
 - A bare array of sessions also works.
-- This example is [`fixtures/simple.json`](fixtures/simple.json), and is also available in the app
-  as **Insert simple example**.
+- This example (without `timezone`) is [`fixtures/simple.json`](fixtures/simple.json), and is also
+  available in the app as **Insert simple example**. [`fixtures/simple-tz.json`](fixtures/simple-tz.json)
+  shows `timezone` with offset-less times.
 
 ## Your agenda
 
@@ -116,9 +154,11 @@ there, plus directions and a leave-by time for your next stop.
 
 If the schedule was loaded **from a link** (Load schedule… → From a link), the QR link also carries
 that feed, plus the relay used to fetch it: `<page link>?feed=<feed URL>&relay=<relay URL>#here-<room-slug>`.
+If the feed has no time zone of its own and you set one under **Time zone…**, the link also carries
+`&tz=<zone>`, so a scanning phone reads the feed's times in the same zone.
 A phone that has never opened NowLine fetches the schedule from it on the first scan, then jumps to
 the room. If a different imported schedule is already stored on the phone, NowLine asks before
-replacing it. The `feed`/`relay` parameters are removed from the address bar once handled.
+replacing it. The `feed`/`relay`/`tz` parameters are removed from the address bar once handled.
 
 The **Page link** defaults to the page you have open, without its `#fragment`. Before printing,
 make sure it's the public URL attendees will be able to open. If you host the page somewhere
@@ -164,7 +204,8 @@ under **Load schedule…**.
 npm install
 npm test                          # unit tests (Vitest): importers, .ics parsing, agenda checks, signs, stars, relay
 npx playwright install chromium   # once
-npm run test:e2e                  # Playwright smoke: demo → skip tour → import → star → conflict → signs
+npm run test:e2e                  # Playwright smoke: demo → import → star → conflict → signs → time zones,
+                                  # run at / and again under /nowline/ against the staged site, like Pages
 ```
 
 ```
@@ -173,12 +214,15 @@ src/app.js               UI: rendering, sheets, map, tour, storage
 src/schedule.js          normalized model + JSON importers (pretalx/frab, Sessionize, simple)
 src/ics.js               .ics parsing and whole-event calendar import
 src/agenda.js            walk times and conflict detection
+src/tz.js                time zones: Intl-based conversion, labels, per-event zone settings
 src/signs.js, stars.js   room-sign links, per-event stars
 src/demo.js, samples.js  synthetic demo data, the simple-format example
 vendor/qrcode.js         QR Code Generator (MIT), unmodified
 assets/tour/*.mp3        tour voiceover
 fixtures/                sample exports used by tests
 nowline-feed-relay.js    optional Cloudflare Worker (wrangler.toml)
+scripts/serve.js         static dev server (--base /nowline/ serves under a sub-path)
+scripts/site.js          copies the site files into _site/ for deployment
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. The short version: no bundler, no framework,

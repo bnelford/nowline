@@ -30,7 +30,7 @@ describe('room links that carry the schedule feed', () => {
   it('omits the relay when there is none', () => {
     const link = roomLink('https://example.org/', { id: 'wb' }, { feed, relay: null });
     expect(new URL(link).searchParams.has('relay')).toBe(false);
-    expect(parseSignLink(link)).toEqual({ room: 'here-wb', feed, relay: null });
+    expect(parseSignLink(link)).toEqual({ room: 'here-wb', feed, relay: null, tz: null });
   });
   it('replaces a feed already on the base link instead of duplicating it', () => {
     const link = roomLink('https://example.org/?feed=https%3A%2F%2Fold.example%2Fx&relay=https%3A%2F%2Fr.example%2F', { id: 'wb' }, { feed });
@@ -45,18 +45,18 @@ describe('room links that carry the schedule feed', () => {
   });
   it('round-trips through parseSignLink', () => {
     const link = roomLink('https://example.org/n/', { id: 'Hall A' }, { feed, relay });
-    expect(parseSignLink(link)).toEqual({ room: 'here-hall-a', feed, relay });
+    expect(parseSignLink(link)).toEqual({ room: 'here-hall-a', feed, relay, tz: null });
   });
 });
 
 describe('parseSignLink', () => {
   it('reads old room-only links', () => {
-    expect(parseSignLink('https://example.org/#here-wb')).toEqual({ room: 'here-wb', feed: null, relay: null });
-    expect(parseSignLink('https://example.org/#here-room%20201')).toEqual({ room: 'here-room 201', feed: null, relay: null });
+    expect(parseSignLink('https://example.org/#here-wb')).toEqual({ room: 'here-wb', feed: null, relay: null, tz: null });
+    expect(parseSignLink('https://example.org/#here-room%20201')).toEqual({ room: 'here-room 201', feed: null, relay: null, tz: null });
   });
   it('ignores non-room fragments and bad input', () => {
     expect(parseSignLink('https://example.org/#tour').room).toBe(null);
-    expect(parseSignLink('not a url')).toEqual({ room: null, feed: null, relay: null });
+    expect(parseSignLink('not a url')).toEqual({ room: null, feed: null, relay: null, tz: null });
     expect(parseSignLink('https://example.org/#here-%E0%A4%A').room).toBe('here-%E0%A4%A');
   });
   it('only accepts https feeds and relays', () => {

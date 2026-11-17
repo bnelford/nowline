@@ -1,4 +1,6 @@
 import { MIN, PALETTE, finish } from './schedule.js';
+import { zonedToUtc, validZone, deviceZone } from './tz.js';
+export { zonedToUtc };
 
 /* ---------- calendar import (.ics) ---------- */
 // Only used by parseICS_legacy below.
@@ -9,19 +11,6 @@ export function icsDate(v){
 }
 export function icsDur(v){const m=String(v).match(/P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?/);return m?((+m[1]||0)*24*60+(+m[2]||0)*60+(+m[3]||0))*MIN:0;}
 export const icsUnesc=s=>s.replace(/\\n/gi,' ').replace(/\\([,;\\])/g,'$1');
-export function zonedToUtc(a,tz){            // a = [y, month0, d, h, mi, s] as wall-clock time in IANA zone tz
-  const base=Date.UTC(...a);
-  try{
-    const f=new Intl.DateTimeFormat('en-US',{timeZone:tz,hourCycle:'h23',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'});
-    let g=base;
-    for(let i=0;i<3;i++){
-      const p=Object.fromEntries(f.formatToParts(new Date(g)).map(x=>[x.type,x.value]));
-      const seen=Date.UTC(+p.year,+p.month-1,+p.day,(+p.hour)%24,+p.minute,+p.second);
-      const diff=base-seen; if(!diff) break; g+=diff;
-    }
-    return g;
-  }catch(e){ return new Date(...a).getTime(); }   // unknown zone name (e.g. Windows names): read as device-local
-}
 export function icsTime(val,params){
   const m=String(val).trim().match(/^(\d{4})(\d\d)(\d\d)(?:T(\d\d)(\d\d)(\d\d)?(Z)?)?$/); if(!m||!m[4]) return null;
   const a=[+m[1],+m[2]-1,+m[3],+m[4],+m[5],+(m[6]||0)];
@@ -47,8 +36,12 @@ export function parseICSEvents(text){
     else if(name==='CATEGORIES') cur.cats=icsText(val);
     else if(name==='URL') cur.url=val.trim();
     else if(name==='UID') cur.uid=val.trim();
-    else if(name==='DTSTART') cur.start=icsTime(val, params||(cal.tz?';TZID='+cal.tz:''));
-    else if(name==='DTEND') cur.end=icsTime(val, params||(cal.tz?';TZID='+cal.tz:''));
+    else if(name==='DTSTART'||name==='DTEND'){
+      const p=params||(cal.tz?';TZID='+cal.tz:''), tz=(p.match(/TZID=("?)([^";:]+)\1/i)||[])[2], t=icsTime(val,p);
+      if(validZone(tz)) cal.tzid=cal.tzid||tz;
+      else if(t!=null&&!/Z$/i.test(val.trim())) cal.floating=true;   // no zone (or an unknown one): read in the device zone
+      cur[name==='DTSTART'?'start':'end']=t;
+    }
     else if(name==='DURATION') cur.dur=icsDur(val);
   }
   evs.cal=cal; return evs;
@@ -76,7 +69,11 @@ export function scheduleFromICS(text,fallbackName){
   const bids=[...new Set(venues.map(v=>v.building))], buildings={};
   bids.forEach((b,i)=>buildings[b]={name:b==='venue'?'Venue':b,color:PALETTE[i%PALETTE.length],walk:{}});
   bids.forEach(a=>bids.forEach(b=>buildings[a].walk[b]= a===b?1:3));   // floors of one venue: ~3 min by escalator (edit in config)
-  return finish(evs.cal.name||fallbackName||'Imported calendar',venues,sessions,buildings);
+  const d=finish(evs.cal.name||fallbackName||'Imported calendar',venues,sessions,buildings);
+  // the event's zone: X-WR-TIMEZONE, else the first TZID used by an event
+  d.tz=validZone(evs.cal.tz)?evs.cal.tz:(evs.cal.tzid||null);
+  if(evs.cal.floating) d.floating=deviceZone();
+  return d;
 }
 export function parseICS(text){
   return parseICSEvents(text).map(e=>({title:e.title,loc:e.loc,notes:(e.notes||'').slice(0,400),uid:e.uid,start:e.start,end:e.end}));
