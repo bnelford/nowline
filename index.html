@@ -20,6 +20,7 @@ header{display:flex;align-items:center;gap:10px;padding:10px 12px 6px}
 .conf{color:var(--dim);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
 .clock{font-variant-numeric:tabular-nums;font-weight:700;font-size:15px;padding:4px 8px;border-radius:8px;background:var(--panel2)}
 .clock.sim{background:#3a2a10;color:var(--star)}
+.tzlab{margin-left:-6px;border:0;background:transparent;color:var(--dim);font-size:11px;font-weight:600;padding:4px 2px;cursor:pointer;white-space:nowrap}
 .btn{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:6px 11px;cursor:pointer;white-space:nowrap}
 .btn.on{background:var(--accent);color:#06121e;border-color:var(--accent);font-weight:600}
 .btn.live.on{background:var(--now);border-color:var(--now);color:#fff}
@@ -120,6 +121,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:5px;font-size:12px}
 .card.mine{border-left-color:var(--star)}
 .form{display:grid;gap:10px;margin-top:10px}
 .form label{display:grid;gap:4px;font-size:12px;color:var(--dim)}
+.form select[size]{padding:4px}
 .form input,.form select,.form textarea{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:9px 10px;font:inherit;font-size:15px;min-height:0}
 .form .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .warnbox{background:#241318;border:1px solid var(--now);border-radius:10px;padding:8px 10px;font-size:13px;color:#ffc7cc;margin-top:8px}
@@ -186,7 +188,7 @@ body.mapmode .follow{display:none!important}
   <div class="brand">Now<span>Line</span></div>
   <div class="conf" id="confName"></div>
   <button class="btn tourbtn" id="tourBtn">▶ Tour</button>
-  <div class="clock" id="clock">--:--</div>
+  <div class="clock" id="clock">--:--</div><button class="tzlab" id="tzLab" style="display:none"></button>
 </header>
 
 <div class="strip" id="strip"></div>
@@ -211,6 +213,7 @@ body.mapmode .follow{display:none!important}
   <button class="btn icon" id="zoomOut">−</button>
   <button class="btn icon" id="zoomIn">+</button>
   <button class="btn" id="signsBtn">Room signs…</button>
+  <button class="btn" id="tzBtn">Time zone…</button>
   <button class="btn" id="importBtn">Load schedule…</button>
 </div>
 

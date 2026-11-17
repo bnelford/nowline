@@ -9,6 +9,8 @@ import { walkBetween as walkBetweenIn, agendaIssues as agendaIssuesIn } from './
 import { DEFAULT_SIGN_TEXT, roomSlug, roomLink, defaultSignBase, signBaseFrom, parseSignLink, withoutFeed } from './signs.js';
 import { starsKey, loadStars } from './stars.js';
 import { demoData } from './demo.js';
+import { deviceZone, validZone, zoneList, searchZones, zonedToUtc, dayKey as dayKeyIn, hhmm as hhmmIn, dayStart, nextDayKey, floorHour,
+  wallParts, sameZone, fmtTime, fmtDay, zoneLabel, zoneCity, rezone, loadZoneSettings, saveZoneSettings, resolveZones } from './tz.js';
 import { SAMPLE_SIMPLE } from './samples.js';
 
 const store = {
@@ -28,6 +30,13 @@ const S = {
   hidden: new Set(store.get('hidden',[])), stars: new Set(), starOnly:false,   // stars load per event in boot()
   blocks: [],
 };
+// time zones: ZS = this event's saved settings, Z = {event, display, fromFeed}. All times are instants;
+// Z.display only decides how they're shown and how typed-in times (blocks) are read.
+let ZS={event:null,display:'event'}, Z={event:deviceZone(),display:deviceZone(),fromFeed:false};
+function loadZones(){
+  ZS=loadZoneSettings(store,data.name); Z=resolveZones(data,ZS,deviceZone());
+  data=rezone(data,Z.event);   // floating times (no offset in the feed) follow the event's zone
+}
 // demo data is regenerated around today, so demo blocks are kept per day
 const blockKey=()=>'blocks:'+data.name+(data.name.startsWith('Demo')?':'+new Date().toDateString():'');
 const saveBlocks=()=>store.set(blockKey(),S.blocks);
@@ -52,7 +61,9 @@ function setClock(virt,speed){S.anchorReal=Date.now();S.anchorVirt=virt;S.speed=
 
 /* ---------- helpers ---------- */
 const $=id=>document.getElementById(id);
-const fmt=t=>new Date(t).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
+const fmt=t=>fmtTime(t,Z.display);
+// show which zone times are in when it isn't the device's
+const zoneNote=t=>sameZone(Z.display,deviceZone())?'':zoneLabel(Z.display,t);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const venueById=id=>data.venues.find(v=>v.id===id);
 function walkMin(venueId){
@@ -70,7 +81,7 @@ function allDays(){ return [...new Set(data.sessions.map(s=>dayKey(s.start)))].s
 function multiDay(){ return allDays().length>1; }
 function daySessions(){
   if(!multiDay()||!S.day) return data.sessions;
-  const [y,m,d]=S.day.split('-').map(Number), a=new Date(y,m-1,d).getTime(), b=a+24*HOUR;
+  const a=dayStart(S.day,Z.display), b=dayStart(nextDayKey(S.day),Z.display);   // 23 or 25 h on DST days
   return data.sessions.filter(s=>s.start<b&&s.end>a);
 }
 function visibleVenues(){
@@ -84,8 +95,7 @@ function pickDay(auto){
 function span(){
   const ds=daySessions().length?daySessions():data.sessions;
   const st=Math.min(...ds.map(s=>s.start)), en=Math.max(...ds.map(s=>s.end));
-  const a=new Date(st);a.setMinutes(0,0,0); const b=new Date(en);b.setMinutes(0,0,0);
-  return {start:a.getTime(), end:b.getTime()+HOUR};
+  return {start:floorHour(st,Z.display), end:floorHour(en,Z.display)+HOUR};
 }
 function relLabel(ms){const m=Math.round(ms/MIN); if(m<60) return m+' min'; return Math.floor(m/60)+'h '+(m%60? (m%60)+'m':'')}
 
@@ -96,9 +106,9 @@ function renderTimeline(){
   const W=(SP.end-SP.start)/MIN*S.ppm;
   X=t=>(t-SP.start)/MIN*S.ppm;
   const inner=$('inner'); inner.style.width=(lw+W)+'px';
-  let h=`<div class="ruler"><div class="corner">${new Date(SP.start).toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'})}</div><div class="ticks" style="width:${W}px">`;
+  let h=`<div class="ruler"><div class="corner">${fmtDay(SP.start,Z.display)}</div><div class="ticks" style="width:${W}px">`;
   for(let t=SP.start;t<=SP.end;t+=30*MIN){
-    const half=new Date(t).getMinutes()!==0;
+    const half=wallParts(t,Z.display).mi!==0;
     h+=`<div class="tick${half?' half':''}" style="left:${X(t)}px"><span>${fmt(t)}</span></div>`;
   }
   h+=`</div></div>`;
@@ -175,6 +185,7 @@ function tick(force){
   });
   // clock
   const c=$('clock'); c.textContent=fmt(t); c.classList.toggle('sim',S.speed!==1||Math.abs(t-Date.now())>MIN);
+  const zl=zoneNote(t); $('tzLab').textContent=zl; $('tzLab').title=zl?'Times in '+Z.display:''; $('tzLab').style.display=zl?'':'none';
   // follow: keep now-line ~30% from the left edge of the visible track
   if(S.follow && inSpan){
     const tl=$('tl'); const target=x - lw - (tl.clientWidth-lw)*0.3;
@@ -250,6 +261,7 @@ $('zoomIn').onclick=()=>{S.ppm=Math.min(8,S.ppm+1);store.set('ppm',S.ppm);S.foll
 $('zoomOut').onclick=()=>{S.ppm=Math.max(1,S.ppm-1);store.set('ppm',S.ppm);S.follow=true;renderTimeline();};
 $('lanesBtn').onclick=openLanes;
 $('importBtn').onclick=openImport;
+$('tzBtn').onclick=openZones; $('tzLab').onclick=openZones;
 
 $('addBlockBtn').onclick=()=>{const t=Math.ceil(now()/(15*MIN))*15*MIN;openBlock(null,{start:t,venue:S.here});};
 document.addEventListener('click',e=>{
@@ -315,9 +327,8 @@ function openHerePrompt(){
 }
 
 /* ---------- personal blocks: create / edit ---------- */
-const pad=n=>String(n).padStart(2,'0');
-const dayKey=t=>{const d=new Date(t);return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());};
-const hhmm=t=>{const d=new Date(t);return pad(d.getHours())+':'+pad(d.getMinutes());};
+const dayKey=t=>dayKeyIn(t,Z.display);
+const hhmm=t=>hhmmIn(t,Z.display);
 function scheduleDays(extra){
   const set=new Set(); for(let t=SP.start;t<SP.end;t+=HOUR) set.add(dayKey(t));
   [Date.now(),now(),extra].forEach(t=>t&&set.add(dayKey(t)));
@@ -346,7 +357,7 @@ function openBlock(id,prefill){
     <div class="row"><button class="btn" id="bIcs">Import from calendar (.ics)…</button></div>`);
   const read=()=>{
     const [y,mo,d]=$('bDay').value.split('-').map(Number), [hh,mi]=($('bStart').value||'09:00').split(':').map(Number);
-    const st=new Date(y,mo-1,d,hh,mi).getTime();
+    const st=zonedToUtc([y,mo-1,d,hh,mi,0],Z.display);
     return {id:existing?existing.id:'b'+Date.now().toString(36),title:$('bTitle').value.trim()||'Blocked',start:st,end:st+(+$('bDur').value)*MIN,
       venue:$('bVenue').value||null,place:$('bPlace').value.trim(),notes:$('bNotes').value.trim()};
   };
@@ -410,8 +421,46 @@ function openIcs(){
   $('closeS').onclick=closeSheet;
 }
 
+/* ---------- time zones: the event's, and which one times are shown in ---------- */
+function zonePicker(id,sel,first){
+  const all=zoneList();
+  const opts=list=>(first?`<option value="">${esc(first)}</option>`:'')+list.map(z=>`<option value="${esc(z)}" ${z===sel?'selected':''}>${esc(z.replace(/_/g,' '))}</option>`).join('');
+  return {html:`<input id="${id}Q" placeholder="Search, e.g. Tokyo, New York, Europe/" autocomplete="off"><select id="${id}" size="6">${opts(all)}</select>`,
+    wire:()=>{$(id+'Q').oninput=e=>{const v=$(id).value;$(id).innerHTML=opts(searchZones(all,e.target.value));if(v)$(id).value=v;};}};
+}
+function openZones(){
+  const dev=deviceZone(), t=now(), lab=z=>`${esc(zoneCity(z))} · ${esc(zoneLabel(z,t))}`;
+  const pick=ZS.display!=='event'&&ZS.display!=='device'?ZS.display:'';
+  const ev=zonePicker('tzEv',ZS.event||'',`This device's zone (${zoneCity(dev)})`), dp=zonePicker('tzPick',pick||Z.display);
+  openSheet(`<h2>Time zone</h2>
+    <h3>Event time zone</h3>
+    ${Z.fromFeed?`<div class="note" id="tzEvInfo">From the schedule: <b>${esc(Z.event)}</b> (${esc(zoneLabel(Z.event,t))}).</div>`
+      :`<div class="note" id="tzEvInfo">The schedule doesn't say. Using <b>${esc(Z.event)}</b>${ZS.event?'':', this device\'s zone'}. Times in the schedule without an offset are read in this zone.</div><div class="form">${ev.html}</div>`}
+    <h3>Show times in</h3>
+    <label class="ck"><input type="radio" name="tzd" value="event" ${ZS.display==='event'?'checked':''}> The event's time zone (${lab(Z.event)})</label>
+    <label class="ck"><input type="radio" name="tzd" value="device" ${ZS.display==='device'?'checked':''}> My device's time zone (${lab(dev)})</label>
+    <label class="ck"><input type="radio" name="tzd" value="pick" ${pick?'checked':''}> A specific time zone</label>
+    <div class="form" id="tzPickWrap" style="${pick?'':'display:none'}">${dp.html}</div>
+    <div class="note" style="margin-top:8px">“Now”, conflicts and walk times don't depend on this. It only changes how times are shown.</div>
+    <div class="err" id="tzErr"></div>
+    <div class="row"><button class="btn on" id="tzSave">Save</button><button class="btn" id="closeS">Cancel</button></div>`);
+  if(!Z.fromFeed) ev.wire(); dp.wire();
+  const mode=()=>($('sheet').querySelector('input[name=tzd]:checked')||{}).value||'event';
+  $('sheet').querySelectorAll('input[name=tzd]').forEach(r=>r.onchange=()=>{$('tzPickWrap').style.display=mode()==='pick'?'':'none';});
+  $('tzSave').onclick=()=>{
+    const m=mode(), z=$('tzPick').value;
+    if(m==='pick'&&!validZone(z)){ $('tzErr').textContent='Choose a time zone from the list.'; return; }
+    ZS=saveZoneSettings(store,data.name,{event:Z.fromFeed?ZS.event:($('tzEv').value||null),display:m==='pick'?z:m});
+    loadZones(); S.dayAuto=true; pickDay(true); S.follow=true; closeSheet(); renderAll();
+  };
+  $('closeS').onclick=closeSheet;
+}
+
 /* ---------- QR room signs + “You're here” guidance ---------- */
 const signBase=()=>signBaseFrom(store.get('signBase',null),location.href);
+// the feed a sign carries, plus tz= only if the feed has no zone and one was set here: without it a scan
+// would read the feed's floating times in the scanning phone's zone
+const signSource=()=>data.source&&data.source.feed?{...data.source,tz:!Z.fromFeed&&ZS.event?ZS.event:null}:null;
 
 function directions(fromId,toId,startAt){
   const A=venueById(fromId), B=venueById(toId); if(!B) return '';
@@ -466,7 +515,7 @@ window.addEventListener('hashchange',handleHash);
 // a printable sign, drawn to a canvas and shown as an image so a phone can long-press → Save
 function wrap(ctx,text,maxW){const out=[];let line='';for(const w of text.split(' ')){const t=line?line+' '+w:w;if(ctx.measureText(t).width>maxW&&line){out.push(line);line=w;}else line=t;}if(line)out.push(line);return out;}
 function signImage(v,base,copy){
-  const url=roomLink(base,v,data.source), W=900,H=1200, c=document.createElement('canvas'); c.width=W;c.height=H;
+  const url=roomLink(base,v,signSource()), W=900,H=1200, c=document.createElement('canvas'); c.width=W;c.height=H;
   const x=c.getContext('2d'), b=data.buildings[v.building]||{};
   x.fillStyle='#ffffff';x.fillRect(0,0,W,H);
   x.fillStyle=v.color||'#7cc4ff';x.fillRect(0,0,W,28);
@@ -488,7 +537,7 @@ function signImage(v,base,copy){
   return c.toDataURL('image/png');
 }
 function openSigns(){
-  const base=signBase(), copy=store.get('signText',DEFAULT_SIGN_TEXT), src=data.source&&data.source.feed?data.source:null;
+  const base=signBase(), copy=store.get('signText',DEFAULT_SIGN_TEXT), src=signSource();
   openSheet(`<h2>Room signs</h2>
     <div class="note">One QR sign per room. Scanning it opens NowLine, sets “I'm here” to that room and shows directions to the person's next stop. Long-press (or right-click) a sign to save it, then print. Set the page link to the public address where attendees can open NowLine.</div>
     ${src?`<div class="okbox" id="sgFeed">The QR links include this schedule's feed (${esc(src.feed)}), so a phone that has never opened NowLine loads it on the first scan.</div>`
@@ -852,7 +901,7 @@ function openImport(){
     <div class="row" style="margin-top:6px"><button class="btn" id="impFetch">Fetch</button></div>
     <div class="note" style="margin-top:4px">Most schedule sites don't let browsers fetch their feeds directly, so fetching by link usually needs a small relay (a Cloudflare Worker; see the README). Without one, download the file and choose it above.</div>
     <h3>Or paste</h3>
-    <div class="note">A calendar (.ics text), <b>pretalx / frab</b> <code>schedule.json</code>, <b>Sessionize</b> “All data” or “Schedule grid”, or the simple format. Times show in this device’s time zone.</div>
+    <div class="note">A calendar (.ics text), <b>pretalx / frab</b> <code>schedule.json</code>, <b>Sessionize</b> “All data” or “Schedule grid”, or the simple format. Times show in the event’s time zone when the schedule gives one (change it under “Time zone…”).</div>
     <textarea id="imp" placeholder='BEGIN:VCALENDAR… or {…}'></textarea>
     <div class="note" id="impInfo"></div>
     <label class="ck"><input type="checkbox" id="rebase"> Shift dates to today (to try a past conference live)</label>
@@ -877,7 +926,7 @@ function openImport(){
   $('doImp').onclick=()=>{
     try{
       let d=parseAny($('imp').value);
-      if($('rebase').checked) d=rebaseToToday(d);
+      if($('rebase').checked){ const ev=resolveZones(d,loadZoneSettings(store,d.name),deviceZone()).event; d=rebaseToToday(rezone(d,ev),ev); }
       if(fetched&&fetched.text===$('imp').value) d.source={feed:fetched.feed,relay:fetched.relay};
       data=d; store.set('data',d); S.hidden.clear(); store.set('hidden',[]); boot(); closeSheet();
     }catch(e){$('impErr').textContent='Could not read that: '+e.message;}
@@ -886,6 +935,7 @@ function openImport(){
 
 /* ---------- boot ---------- */
 function boot(){
+  loadZones();
   S.here=store.get('here:'+data.name,null); if(S.here&&!venueById(S.here)) S.here=null;
   S.follow=true; S.anchorReal=Date.now(); S.anchorVirt=Date.now(); S.speed=1;
   S.dayAuto=true; pickDay(true);
@@ -909,6 +959,7 @@ async function loadFromSign(sign){
   openSheet(`<h2>Loading the schedule…</h2><div class="note">Fetching the schedule for the room sign you scanned.</div>`);
   try{
     const d=parseAny(await fetchFeed(sign.feed,sign.relay)); d.source={feed:sign.feed,relay:sign.relay};
+    if(sign.tz&&validZone(sign.tz)&&!validZone(d.tz)) saveZoneSettings(store,d.name,{...loadZoneSettings(store,d.name),event:sign.tz});
     data=d; store.set('data',d); S.hidden.clear(); store.set('hidden',[]); boot(); closeSheet();
     history.replaceState(null,'',withoutFeed(location.href)); handleHash();
   }catch(e){

@@ -29,8 +29,14 @@ npm run test:e2e                   # Playwright smoke test
 ```
 
 Unit tests run with `TZ=UTC` (set in `vitest.config.js`) because floating `.ics` times and
-Sessionize timestamps are read in the device's time zone. The E2E test pins its browser to
-`America/Los_Angeles` and fixes the clock.
+Sessionize timestamps are read in the device's time zone when the event's zone is unknown. The E2E
+tests pin the browser to `America/Los_Angeles` and fix the clock. They run twice: once from the repo
+root, and once (the `subpath` project) against only the files in `scripts/site.js`, served under
+`/nowline/` the way GitHub Pages serves this repo. Use relative paths (`./…`) for anything the page
+loads, and in `page.goto`.
+
+Store times as real instants (ms since epoch). Format and do day arithmetic with the helpers in
+`src/tz.js`, which take an explicit zone, rather than `Date`'s local getters.
 
 ## Changing an importer
 
