@@ -14,4 +14,4 @@
 - [ ] New or changed parsing/agenda logic is in a pure `src/` module, with tests and fixtures (synthetic data only)
 - [ ] `localStorage` key changes include a migration for existing users
 - [ ] Third-party code or assets are recorded in `THIRD_PARTY.md` with their original license
-- [ ] README updated if import formats, the event JSON, or setup changed
+- [ ] README or docs/ updated if import formats, the event JSON, or setup changed

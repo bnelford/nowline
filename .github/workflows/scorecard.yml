@@ -1,7 +1,7 @@
 name: Scorecard supply-chain security
 
 # OpenSSF Scorecard (https://github.com/ossf/scorecard). Results are published to the public Scorecard API
-# (README badge) and uploaded to code scanning. Publishing needs a public repository.
+# and uploaded to code scanning. Publishing needs a public repository.
 on:
   push:
     branches: [main]

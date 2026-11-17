@@ -43,7 +43,7 @@ Store times as real instants (ms since epoch). Format and do day arithmetic with
 1. Add or extend a file in `fixtures/` with a small, **synthetic** example. Don't commit real
    attendee data or private feeds.
 2. Add unit tests in `test/unit/` that cover the fields you rely on and the edge cases you fixed.
-3. Update the import table in the README if the supported inputs change.
+3. Update the import table in the README and [docs/importing.md](docs/importing.md) if the supported inputs change.
 
 ## Third-party code and assets
 

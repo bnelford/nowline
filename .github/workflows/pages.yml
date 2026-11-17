@@ -1,7 +1,7 @@
 name: Deploy to GitHub Pages
 
 # Publishes the static app (index.html, src/, vendor/, assets/) to https://bnelford.github.io/nowline/,
-# plus the README's coverage and test-count badges (coverage-badge.json, tests-badge.json; scripts/badges.js).
+# plus coverage and test-count badge endpoints (coverage-badge.json, tests-badge.json; scripts/badges.js).
 # Pages must be enabled in the repo settings with "Source: GitHub Actions" for the deploy job to run.
 on:
   push:

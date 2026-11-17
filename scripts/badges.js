@@ -1,5 +1,5 @@
 // Writes shields.io endpoint badges (https://shields.io/badges/endpoint-badge) from test reports, so the
-// README badges need no third-party coverage service. Used by .github/workflows/pages.yml, which publishes
+// badges need no third-party coverage service. Used by .github/workflows/pages.yml, which publishes
 // the files with the site at https://bnelford.github.io/nowline/<name>.json.
 // Inputs (missing ones are skipped): coverage/coverage-summary.json (npm run test:coverage),
 // reports/unit.json (Vitest json reporter), reports/e2e.json (Playwright json reporter).
