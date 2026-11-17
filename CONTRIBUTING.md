@@ -64,4 +64,5 @@ By contributing, you agree that your contributions are licensed under the
 [Apache License 2.0](LICENSE), as described in section 5 of the license.
 
 Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md). Report
-security issues privately as described in [SECURITY.md](SECURITY.md), not in public issues.
+conduct concerns privately to <nelfordbc+nowlineconduct@gmail.com>. Report security issues privately
+as described in [SECURITY.md](SECURITY.md), not in public issues.
