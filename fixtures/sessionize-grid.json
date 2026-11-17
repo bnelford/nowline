@@ -1,0 +1,80 @@
+[
+  {
+    "date": "2026-11-12T00:00:00",
+    "isDefault": true,
+    "rooms": [
+      {
+        "id": 11,
+        "name": "Room A",
+        "sessions": [
+          {
+            "id": "501",
+            "title": "Edge caching for schedule feeds",
+            "description": "Why five minutes is enough.",
+            "startsAt": "2026-11-12T09:00:00",
+            "endsAt": "2026-11-12T09:45:00",
+            "isServiceSession": false,
+            "isPlenumSession": false,
+            "speakers": [
+              { "id": "7b1e0001-aaaa-4bbb-8ccc-000000000001", "name": "Ana Lima" },
+              { "id": "7b1e0002-aaaa-4bbb-8ccc-000000000002", "name": "Bo Chen" }
+            ],
+            "categories": [],
+            "roomId": 11,
+            "room": "Room A",
+            "liveUrl": null,
+            "recordingUrl": null,
+            "status": "Accepted",
+            "isInformed": true,
+            "isConfirmed": true
+          }
+        ],
+        "hasOnlyPlenumSessions": false
+      },
+      {
+        "id": 12,
+        "name": "Room B",
+        "sessions": [
+          {
+            "id": "502",
+            "title": "Accessible wayfinding",
+            "description": null,
+            "startsAt": "2026-11-12T10:00:00",
+            "endsAt": "2026-11-12T10:30:00",
+            "speakers": [{ "id": "7b1e0003-aaaa-4bbb-8ccc-000000000003", "name": "Sam Patel" }],
+            "categories": [],
+            "roomId": 12,
+            "room": "Room B"
+          }
+        ],
+        "hasOnlyPlenumSessions": false
+      }
+    ],
+    "timeSlots": []
+  },
+  {
+    "date": "2026-11-13T00:00:00",
+    "isDefault": false,
+    "rooms": [
+      {
+        "id": 11,
+        "name": "Room A",
+        "sessions": [
+          {
+            "id": "601",
+            "title": "Day two keynote",
+            "description": "",
+            "startsAt": "2026-11-13T09:00:00",
+            "endsAt": "2026-11-13T10:00:00",
+            "speakers": [],
+            "categories": [],
+            "roomId": 11,
+            "room": "Room A"
+          }
+        ],
+        "hasOnlyPlenumSessions": false
+      }
+    ],
+    "timeSlots": []
+  }
+]
