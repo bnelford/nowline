@@ -7,5 +7,11 @@ process.env.TZ = 'UTC';
 export default defineConfig({
   test: {
     include: ['test/unit/**/*.test.js'],
+    // `npm run test:coverage`. json-summary feeds the coverage badge (scripts/badges.js).
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.js', 'nowline-feed-relay.js'],
+      reporter: ['text', 'json-summary'],
+    },
   },
 });

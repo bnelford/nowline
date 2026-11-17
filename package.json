@@ -10,10 +10,12 @@
     "serve": "node scripts/serve.js",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1",
+    "@vitest/coverage-v8": "5.1.0",
     "vitest": "5.1.0"
   }
 }

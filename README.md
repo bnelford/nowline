@@ -1,4 +1,17 @@
-# NowLine
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/logo-dark.svg">
+    <img src="assets/brand/logo.svg" alt="NowLine" width="312" height="64">
+  </picture>
+</h1>
+
+[![CI](https://github.com/bnelford/nowline/actions/workflows/ci.yml/badge.svg)](https://github.com/bnelford/nowline/actions/workflows/ci.yml)
+[![Deploy to GitHub Pages](https://github.com/bnelford/nowline/actions/workflows/pages.yml/badge.svg)](https://github.com/bnelford/nowline/actions/workflows/pages.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fbnelford.github.io%2Fnowline%2Fcoverage-badge.json)](https://github.com/bnelford/nowline/actions/workflows/pages.yml)
+[![Tests](https://img.shields.io/endpoint?url=https%3A%2F%2Fbnelford.github.io%2Fnowline%2Ftests-badge.json)](https://github.com/bnelford/nowline/actions/workflows/pages.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/bnelford/nowline/badge)](https://scorecard.dev/viewer/?uri=github.com/bnelford/nowline)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Live demo](https://img.shields.io/badge/demo-live-ff4d5e.svg)](https://bnelford.github.io/nowline/)
 
 A live conference timeline for attendees: what's on **now** and **next**, where you are, and whether
 you'll make it to your next session in time.
@@ -50,8 +63,8 @@ copies exactly those into `_site/`. All paths are relative, so the site also wor
 ### Deploy your own
 
 **GitHub Pages.** Fork the repo, then in *Settings → Pages* set *Source* to **GitHub Actions**.
-[`.github/workflows/pages.yml`](.github/workflows/pages.yml) runs the unit tests and publishes the
-site on every push to `main` (or from *Actions → Deploy to GitHub Pages → Run workflow*). It ends up at
+[`.github/workflows/pages.yml`](.github/workflows/pages.yml) runs the unit and E2E tests and publishes the
+site, along with the coverage and test-count badge data, on every push to `main` (or from *Actions → Deploy to GitHub Pages → Run workflow*). It ends up at
 `https://<you>.github.io/<repo>/`, and room signs default to that address.
 
 **Feed relay (optional).** Pages only serves static files, so the [relay](#feed-relay-optional) is
@@ -203,6 +216,7 @@ under **Load schedule…**.
 ```sh
 npm install
 npm test                          # unit tests (Vitest): importers, .ics parsing, agenda checks, signs, stars, relay
+npm run test:coverage             # the same, with a V8 coverage report (src/ and the relay)
 npx playwright install chromium   # once
 npm run test:e2e                  # Playwright smoke: demo → import → star → conflict → signs → time zones,
                                   # run at / and again under /nowline/ against the staged site, like Pages
@@ -219,10 +233,12 @@ src/signs.js, stars.js   room-sign links, per-event stars
 src/demo.js, samples.js  synthetic demo data, the simple-format example
 vendor/qrcode.js         QR Code Generator (MIT), unmodified
 assets/tour/*.mp3        tour voiceover
+assets/brand/            logo, mark, monochrome variants, favicon and app icons
 fixtures/                sample exports used by tests
 nowline-feed-relay.js    optional Cloudflare Worker (wrangler.toml)
 scripts/serve.js         static dev server (--base /nowline/ serves under a sub-path)
 scripts/site.js          copies the site files into _site/ for deployment
+scripts/badges.js        writes the coverage/test-count badge JSON from test reports (pages.yml)
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. The short version: no bundler, no framework,
