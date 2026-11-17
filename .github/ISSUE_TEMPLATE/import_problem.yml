@@ -1,0 +1,40 @@
+name: Schedule won't import
+description: A schedule export loads wrongly or not at all
+labels: [importer]
+body:
+  - type: dropdown
+    id: source
+    attributes:
+      label: Source
+      options:
+        - Sched (.ics)
+        - Other whole-event .ics (Swapcard, Cvent, Indico, …)
+        - pretalx / frab schedule.json
+        - Sessionize "All data"
+        - Sessionize "Schedule grid"
+        - Simple JSON
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: url
+    attributes:
+      label: Public feed URL (if there is one)
+      description: Only public URLs, please. Don't paste private or authenticated feed links.
+  - type: textarea
+    id: sample
+    attributes:
+      label: Minimal sample
+      description: The smallest excerpt that shows the problem. Remove personal data (attendee names, emails, private notes) first.
+      render: text
+  - type: textarea
+    id: what
+    attributes:
+      label: What's wrong
+      description: The error message, or what's missing or incorrect (times, rooms, speakers…).
+    validations:
+      required: true
+  - type: input
+    id: tz
+    attributes:
+      label: Your device's time zone and the event's time zone

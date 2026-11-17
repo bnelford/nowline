@@ -1,0 +1,25 @@
+name: Feature request
+description: Suggest an improvement
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        NowLine stays build-free and backend-free, and it reads schedules rather than authoring them
+        (see CONTRIBUTING.md). Ideas that need a server or a bundler are a hard sell, but it's still
+        worth describing the underlying problem.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What's hard today, and for whom (attendee, organizer, …)?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you'd like
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or workarounds you've tried

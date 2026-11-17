@@ -1,0 +1,40 @@
+name: Bug report
+description: Something in NowLine doesn't work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security issue? Please don't file it here. See SECURITY.md for private reporting.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you saw instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Load schedule… → …
+        2. …
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Browser, device and time zone
+      placeholder: Safari 19 on iPhone, America/Chicago
+    validations:
+      required: true
+  - type: input
+    id: hosting
+    attributes:
+      label: How you're running it
+      placeholder: npm run serve / GitHub Pages / other static host (URL if public)
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or console errors

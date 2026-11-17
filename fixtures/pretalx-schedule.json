@@ -1,0 +1,109 @@
+{
+  "$schema": "https://c3voc.de/schedule/schema.json",
+  "generator": { "name": "pretalx", "version": "fixture" },
+  "schedule": {
+    "version": "0.3",
+    "base_url": "https://pretalx.example.org/fixturecamp/schedule/",
+    "conference": {
+      "acronym": "fixturecamp",
+      "title": "FixtureCamp 2026",
+      "start": "2026-11-12",
+      "end": "2026-11-13",
+      "daysCount": 2,
+      "timeslot_duration": "00:05",
+      "time_zone_name": "Europe/Brussels",
+      "days": [
+        {
+          "index": 1,
+          "date": "2026-11-12",
+          "day_start": "2026-11-12T04:00:00+01:00",
+          "day_end": "2026-11-13T03:59:00+01:00",
+          "rooms": {
+            "Main Stage": [
+              {
+                "guid": "6f1d2a6e-0001-4c1e-9a1e-000000000001",
+                "id": 101,
+                "date": "2026-11-12T10:00:00+01:00",
+                "start": "10:00",
+                "duration": "00:45",
+                "room": "Main Stage",
+                "slug": "fixturecamp-101-opening",
+                "title": "Opening",
+                "subtitle": "",
+                "track": "Community",
+                "type": "Talk",
+                "language": "en",
+                "abstract": "Welcome and logistics.",
+                "description": "Longer description that is not used when an abstract exists.",
+                "persons": [
+                  { "code": "AL01", "name": "Ana Lima", "public_name": "Ana Lima", "biography": "" },
+                  { "code": "BC02", "name": "Bo Chen", "biography": "" }
+                ],
+                "links": [],
+                "attachments": []
+              },
+              {
+                "guid": "6f1d2a6e-0002-4c1e-9a1e-000000000002",
+                "id": 102,
+                "date": "2026-11-12T11:00:00+01:00",
+                "start": "11:00",
+                "duration": "01:30",
+                "room": "Main Stage",
+                "title": "Workshop: Packaging for distros",
+                "type": "Workshop",
+                "abstract": "",
+                "description": "Hands-on.",
+                "persons": []
+              }
+            ],
+            "Room B": [
+              {
+                "guid": "6f1d2a6e-0003-4c1e-9a1e-000000000003",
+                "id": 103,
+                "date": "2026-11-12T10:15:00+01:00",
+                "start": "10:15",
+                "duration": "00:25",
+                "room": "Room B",
+                "title": "Lightning talks",
+                "track": null,
+                "type": "Lightning",
+                "abstract": "Five minutes each.",
+                "persons": [{ "public_name": "Sam Patel" }]
+              },
+              {
+                "guid": "6f1d2a6e-0004-4c1e-9a1e-000000000004",
+                "id": 104,
+                "date": "",
+                "duration": "00:30",
+                "room": "Room B",
+                "title": "Unscheduled (no date: skipped)",
+                "persons": []
+              }
+            ]
+          }
+        },
+        {
+          "index": 2,
+          "date": "2026-11-13",
+          "rooms": {
+            "Main Stage": [
+              {
+                "guid": "6f1d2a6e-0005-4c1e-9a1e-000000000005",
+                "id": 105,
+                "date": "2026-11-13T09:30:00+01:00",
+                "start": "09:30",
+                "duration": "00:30",
+                "room": "Main Stage",
+                "title": "Day two kickoff",
+                "track": "Community",
+                "type": "Talk",
+                "abstract": "",
+                "persons": []
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

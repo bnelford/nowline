@@ -1,0 +1,75 @@
+{
+  "sessions": [
+    {
+      "id": "501",
+      "title": "Edge caching for schedule feeds",
+      "description": "Why five minutes is enough.",
+      "startsAt": "2026-11-12T09:00:00",
+      "endsAt": "2026-11-12T09:45:00",
+      "isServiceSession": false,
+      "isPlenumSession": false,
+      "speakers": ["7b1e0001-aaaa-4bbb-8ccc-000000000001", "7b1e0002-aaaa-4bbb-8ccc-000000000002"],
+      "categoryItems": [],
+      "questionAnswers": [],
+      "roomId": 11,
+      "liveUrl": null,
+      "recordingUrl": null,
+      "status": "Accepted",
+      "isInformed": true,
+      "isConfirmed": true
+    },
+    {
+      "id": "502",
+      "title": "Accessible wayfinding",
+      "description": null,
+      "startsAt": "2026-11-12T10:00:00",
+      "endsAt": "2026-11-12T10:30:00",
+      "isServiceSession": false,
+      "isPlenumSession": false,
+      "speakers": ["7b1e0003-aaaa-4bbb-8ccc-000000000003"],
+      "categoryItems": [],
+      "questionAnswers": [],
+      "roomId": 12,
+      "status": "Accepted"
+    },
+    {
+      "id": "503",
+      "title": "Coffee",
+      "description": "",
+      "startsAt": "2026-11-12T09:45:00",
+      "endsAt": "2026-11-12T10:00:00",
+      "isServiceSession": true,
+      "isPlenumSession": true,
+      "speakers": [],
+      "categoryItems": [],
+      "questionAnswers": [],
+      "roomId": 11,
+      "status": null
+    },
+    {
+      "id": "504",
+      "title": "Accepted but not yet scheduled (skipped)",
+      "description": "",
+      "startsAt": null,
+      "endsAt": null,
+      "isServiceSession": false,
+      "isPlenumSession": false,
+      "speakers": [],
+      "categoryItems": [],
+      "questionAnswers": [],
+      "roomId": null,
+      "status": "Accepted"
+    }
+  ],
+  "speakers": [
+    { "id": "7b1e0001-aaaa-4bbb-8ccc-000000000001", "firstName": "Ana", "lastName": "Lima", "fullName": "Ana Lima", "bio": "", "sessions": [501] },
+    { "id": "7b1e0002-aaaa-4bbb-8ccc-000000000002", "firstName": "Bo", "lastName": "Chen", "fullName": "Bo Chen", "bio": "", "sessions": [501] },
+    { "id": "7b1e0003-aaaa-4bbb-8ccc-000000000003", "firstName": "Sam", "lastName": "Patel", "bio": "", "sessions": [502] }
+  ],
+  "questions": [],
+  "categories": [],
+  "rooms": [
+    { "id": 11, "name": "Room A", "sort": 1 },
+    { "id": 12, "name": "Room B", "sort": 2 }
+  ]
+}
