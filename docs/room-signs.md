@@ -19,6 +19,8 @@ other than where you're generating signs, set **Page link** to that URL.
 If the schedule was loaded from a **file or pasted text**, there's no link to carry, so the QR link
 only identifies the room. The sign generator warns about this: a scan only works on a phone that
 already has the same schedule loaded, and shows the demo otherwise. Load the schedule from its feed
-link and regenerate the signs to fix that. Older room-only sign links keep working as before.
+link and regenerate the signs to fix that.
+
+The same link without the room is what **Share…** gives you: it loads the schedule but doesn't set "I'm here". Feed links without a room ask "Load this shared schedule?" instead of mentioning a sign.
 
 Keep the feed URL stable for the event: if it changes, printed signs keep pointing at the old one.

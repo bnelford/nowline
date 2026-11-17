@@ -1,14 +1,11 @@
 /* ---------- QR room signs: links (pure) ---------- */
 export const DEFAULT_SIGN_TEXT='Scan me to tell your phone where you are in the conference and for guidance on how to get to your destination';
-// Backward compatibility only: the hardcoded sign default from the original prototype, which older
-// copies may still have saved to localStorage. Treated as "not set" so signs point at wherever this
-// copy is actually hosted. Never use it as a link.
-export const LEGACY_SIGN_BASE='https://claude.ai/artifact/H1XXjjEUvK6B4b1W959m6u';
 export const roomSlug=v=>'here-'+String(v.id).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 // src = the event's feed ({feed, relay, tz}), if it was loaded from a link. The feed (and the relay needed
 // to read it) go in the query so a phone that has never loaded this schedule can fetch it. tz is only
 // passed when the feed has no zone of its own and the organizer set one, so the scan reads times the same way.
-export function roomLink(base,v,src){
+// shareLink is the page link carrying the feed (the "Share" link); roomLink adds the room for a sign.
+export function shareLink(base,src){
   base=base.replace(/#.*$/,'');
   if(src&&isHttps(src.feed)){
     try{
@@ -18,8 +15,9 @@ export function roomLink(base,v,src){
       base=u.toString();
     }catch(e){}
   }
-  return base+'#'+roomSlug(v);
+  return base;
 }
+export const roomLink=(base,v,src)=>shareLink(base,src)+'#'+roomSlug(v);
 // What a sign link asks for: {room:'here-…'|null, feed, relay, tz}. Non-https feed/relay values are ignored,
 // and relay/tz only count alongside a feed.
 export function parseSignLink(href){
@@ -41,4 +39,4 @@ const isHttps=s=>typeof s==='string'&&/^https:\/\/[^\s]+$/i.test(s);
 const isZone=s=>typeof s==='string'&&s.length<=64&&/^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+)*$/.test(s);
 // default QR target: the page the organizer has open, minus any #fragment and any feed it was opened with
 export const defaultSignBase=href=>withoutFeed(String(href).replace(/#.*$/,''));
-export const signBaseFrom=(saved,href)=>(saved&&saved!==LEGACY_SIGN_BASE)?saved:defaultSignBase(href);
+export const signBaseFrom=(saved,href)=>saved||defaultSignBase(href);

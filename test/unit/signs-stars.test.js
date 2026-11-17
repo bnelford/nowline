@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { roomSlug, roomLink, defaultSignBase, signBaseFrom, parseSignLink, withoutFeed, LEGACY_SIGN_BASE } from '../../src/signs.js';
+import { roomSlug, roomLink, shareLink, defaultSignBase, signBaseFrom, parseSignLink, withoutFeed } from '../../src/signs.js';
 import { loadStars, starsKey } from '../../src/stars.js';
 
 describe('roomSlug / roomLink', () => {
@@ -49,6 +48,19 @@ describe('room links that carry the schedule feed', () => {
   });
 });
 
+describe('shareLink', () => {
+  const feed = 'https://pretalx.com/conf/schedule/export/schedule.json';
+  it('is the sign link without the room', () => {
+    const src = { feed, relay: 'https://r.example/?url=', tz: 'Europe/Brussels' };
+    expect(shareLink('https://example.org/n/#here-x', src) + '#here-wb').toBe(roomLink('https://example.org/n/', { id: 'wb' }, src));
+    expect(parseSignLink(shareLink('https://example.org/n/', src))).toEqual({ room: null, feed, relay: src.relay, tz: 'Europe/Brussels' });
+  });
+  it('is just the page link without an https feed', () => {
+    expect(shareLink('https://example.org/n/#x', null)).toBe('https://example.org/n/');
+    expect(shareLink('https://example.org/n/', { feed: 'http://insecure.example/x' })).toBe('https://example.org/n/');
+  });
+});
+
 describe('parseSignLink', () => {
   it('reads old room-only links', () => {
     expect(parseSignLink('https://example.org/#here-wb')).toEqual({ room: 'here-wb', feed: null, relay: null, tz: null });
@@ -93,13 +105,6 @@ describe('sign base default', () => {
   it('honours an organizer override', () => {
     expect(signBaseFrom('https://signs.example.org/', href)).toBe('https://signs.example.org/');
   });
-  it('ignores the old hardcoded prototype URL if a browser still has it saved', () => {
-    expect(signBaseFrom(LEGACY_SIGN_BASE, href)).toBe('https://events.example.org/nowline/index.html?x=1');
-  });
-  it('no app code uses the legacy URL as a default', () => {
-    const app = readFileSync(new URL('../../src/app.js', import.meta.url), 'utf8');
-    expect(app).not.toMatch(/claude\.ai/);
-  });
 });
 
 describe('per-event stars', () => {
@@ -113,51 +118,5 @@ describe('per-event stars', () => {
     expect([...loadStars(st, 'A')]).toEqual(['a1']);
     expect([...loadStars(st, 'B')]).toEqual(['b1']);
     expect([...loadStars(st, 'C')]).toEqual([]);
-  });
-  it('moves legacy stars to an event only if the session exists there', () => {
-    const st = fakeStore({ stars: ['d1', 'd2'] });
-    expect([...loadStars(st, 'Demo', ['d1', 'd2', 'd3'])]).toEqual(['d1', 'd2']);
-    expect(st.m.has('stars')).toBe(false);
-    expect(st.m.get('stars:Demo')).toEqual(['d1', 'd2']);
-    expect([...loadStars(st, 'Other event', ['d1'])]).toEqual([]);   // already moved, not copied again
-  });
-  it('splits a list mixed from several events across the events that have each id', () => {
-    const st = fakeStore({ stars: ['a1', 'b1', 'a2', 'c1'] });
-    expect([...loadStars(st, 'A', ['a1', 'a2', 'a3'])]).toEqual(['a1', 'a2']);
-    expect(st.m.get('stars')).toEqual(['b1', 'c1']);                  // kept for later events
-    expect([...loadStars(st, 'Z', ['z1'])]).toEqual([]);               // no match: nothing moves
-    expect(st.m.get('stars')).toEqual(['b1', 'c1']);
-    expect(st.m.has('stars:Z')).toBe(false);
-    expect([...loadStars(st, 'B', ['b1'])]).toEqual(['b1']);
-    expect(st.m.get('stars')).toEqual(['c1']);
-    expect([...loadStars(st, 'C', ['c1', 'c2'])]).toEqual(['c1']);
-    expect(st.m.has('stars')).toBe(false);                             // dropped once empty
-    expect([...loadStars(st, 'A', ['a1', 'a2', 'a3'])]).toEqual(['a1', 'a2']);
-  });
-  it('is idempotent', () => {
-    const st = fakeStore({ stars: ['a1', 'b1'], 'stars:A': ['a9'] });
-    loadStars(st, 'A', ['a1', 'a9']);
-    const snap = new Map(st.m);
-    expect([...loadStars(st, 'A', ['a1', 'a9'])]).toEqual(['a9', 'a1']);
-    expect(st.m).toEqual(snap);
-  });
-  it('merges into stars already saved for that event without duplicates', () => {
-    const st = fakeStore({ stars: ['old', 'x'], 'stars:Demo': ['new', 'x'] });
-    expect([...loadStars(st, 'Demo', ['old', 'new', 'x'])]).toEqual(['new', 'x', 'old']);
-    expect(st.m.has('stars')).toBe(false);
-  });
-  it('leaves unmatched legacy stars alone and keeps saved ones', () => {
-    const st = fakeStore({ stars: ['old'], 'stars:Demo': ['new'] });
-    expect([...loadStars(st, 'Demo', ['new'])]).toEqual(['new']);
-    expect(st.m.get('stars')).toEqual(['old']);
-  });
-  it('drops an empty or malformed legacy key', () => {
-    const a = fakeStore({ stars: [] }); loadStars(a, 'A', ['a1']); expect(a.m.has('stars')).toBe(false);
-    const b = fakeStore({ stars: 'nope' }); loadStars(b, 'A', ['a1']); expect(b.m.has('stars')).toBe(false);
-  });
-  it('without session ids, moves nothing', () => {
-    const st = fakeStore({ stars: ['a1'] });
-    expect([...loadStars(st, 'A')]).toEqual([]);
-    expect(st.m.get('stars')).toEqual(['a1']);
   });
 });

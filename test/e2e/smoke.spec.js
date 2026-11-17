@@ -119,6 +119,43 @@ test('sign from a feed-loaded schedule opens that schedule and room on a fresh d
   await att.ctx.close();
 });
 
+test('share link: opens a feed-loaded schedule on a fresh device; demo and file imports explain why there is none', async ({ browser, baseURL }) => {
+  const org = await fresh(browser);
+  await serveFeed(org.ctx);
+  await org.page.goto(baseURL);
+  await skipTour(org.page);
+  await org.page.locator('#shareBtn').click();
+  await expect(org.page.locator('#shWarn')).toContainText('This is the demo.');
+  await org.page.locator('#closeS').click();
+  await org.page.locator('#importBtn').click();
+  await org.page.locator('#impUrl').fill(FEED);
+  await org.page.locator('#impFetch').click();
+  await expect(org.page.locator('#impInfo')).toContainText('Looks good');
+  await org.page.locator('#doImp').click();
+  await org.page.locator('#shareBtn').click();
+  const link = await org.page.locator('#shLink').inputValue();
+  expect(new URL(link).searchParams.get('feed')).toBe(FEED);
+  expect(new URL(link).hash).toBe('');
+  await org.ctx.close();
+
+  const att = await fresh(browser);
+  await serveFeed(att.ctx);
+  await att.page.goto(link);
+  await expect(att.page.locator('#confName')).toHaveText('My meetup');
+  await expect(att.page.locator('#sheet.show')).toHaveCount(0);
+  expect(new URL(att.page.url()).searchParams.has('feed')).toBe(false);
+
+  // a different imported schedule on this device: asks, worded as a shared link
+  await att.page.locator('#importBtn').click();
+  await att.page.locator('#impFile').setInputFiles('fixtures/pretalx-schedule.json');
+  await att.page.locator('#doImp').click();
+  await att.page.locator('#shareBtn').click();
+  await expect(att.page.locator('#shWarn')).toContainText('loaded from a file or pasted text');
+  await att.page.goto(link);
+  await expect(att.page.locator('#sheet h2')).toHaveText('Load this shared schedule?');
+  await att.ctx.close();
+});
+
 test('sign feed: asks before replacing a different schedule, and reports a failed fetch', async ({ browser, baseURL }) => {
   const { ctx, page } = await fresh(browser);
   await page.goto(baseURL);

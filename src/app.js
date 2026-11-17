@@ -6,7 +6,7 @@
 import { MIN, HOUR, normalize, rebaseToToday } from './schedule.js';
 import { parseICS, scheduleFromICS } from './ics.js';
 import { walkBetween as walkBetweenIn, agendaIssues as agendaIssuesIn } from './agenda.js';
-import { DEFAULT_SIGN_TEXT, roomSlug, roomLink, defaultSignBase, signBaseFrom, parseSignLink, withoutFeed } from './signs.js';
+import { DEFAULT_SIGN_TEXT, roomSlug, roomLink, shareLink, defaultSignBase, signBaseFrom, parseSignLink, withoutFeed } from './signs.js';
 import { starsKey, loadStars } from './stars.js';
 import { demoData } from './demo.js';
 import { deviceZone, validZone, zoneList, searchZones, zonedToUtc, dayKey as dayKeyIn, hhmm as hhmmIn, dayStart, nextDayKey, floorHour,
@@ -19,6 +19,8 @@ const store = {
   del(k){try{localStorage.removeItem('nowline:'+k)}catch(e){}}
 };
 // Kokoro-82M voiceover clips, one per TOUR step (see THIRD_PARTY.md); missing clips fall back to speechSynthesis
+// Public feed relay used when the Relay URL field is empty ('' = none; see docs/relay.md)
+const DEFAULT_RELAY='';
 const TOUR_AUDIO=Array.from({length:13},(_,i)=>`assets/tour/${String(i+1).padStart(2,'0')}.mp3`);
 
 /* ---------- state ---------- */
@@ -563,6 +565,24 @@ function openSigns(){
   $('sgGo').onclick=draw; $('closeS').onclick=closeSheet; draw();
 }
 $('signsBtn').onclick=openSigns;
+// A link that opens this schedule on any phone: the same feed/relay/tz a room sign carries, without the room.
+function openShare(){
+  const src=signSource(), link=src&&shareLink(signBase(),src);
+  openSheet(`<h2>Share this schedule</h2>
+    ${link?`<div class="note">Anyone who opens this link gets “${esc(data.name)}” loaded from its feed, even on a phone that has never opened NowLine. Post it in the event's chat or put it on a slide.</div>
+      <div class="form"><input id="shLink" readonly value="${esc(link)}"></div>
+      <div class="row">${navigator.share?'<button class="btn on" id="shGo">Share…</button>':''}<button class="btn${navigator.share?'':' on'}" id="shCopy">Copy link</button><button class="btn" id="closeS">Close</button></div>`
+    :`<div class="warnbox" id="shWarn">⚠ ${data.name.startsWith('Demo')?'This is the demo.':'This schedule was loaded from a file or pasted text, so there is no link to share.'} Load a schedule from its feed link (Load schedule… → From a link) to get a link anyone can open.</div>
+      <div class="row"><button class="btn" id="closeS">Close</button></div>`}`);
+  $('closeS').onclick=closeSheet;
+  if(!link) return;
+  if($('shGo')) $('shGo').onclick=()=>navigator.share({title:data.name,url:link}).catch(()=>{});
+  $('shCopy').onclick=()=>{
+    const el=$('shCopy'), done=()=>{el.textContent='Copied';setTimeout(()=>el.textContent='Copy link',1500);};
+    try{navigator.clipboard.writeText(link).then(done,()=>$('shLink').select());}catch(e){$('shLink').select();}
+  };
+}
+$('shareBtn').onclick=openShare;
 
 /* ---------- map view ---------- */
 let VIEW='timeline';
@@ -897,9 +917,9 @@ function openImport(){
     <div class="note">On the event's Sched site, <b>log out</b>, tap <b>Mobile App + iCal</b>, and download or copy the calendar for the <i>whole event</i>. Choose that file below, or paste its text. Any whole-event .ics works (Swapcard, Cvent and others export them too).</div>
     <div class="form" style="margin-top:8px"><input type="file" id="impFile" accept=".ics,.json,text/calendar,application/json"></div>
     <h3>From a link</h3>
-    <div class="form"><input id="impUrl" placeholder="https://yourevent.sched.com/all.ics" value="${esc(store.get('impUrl',''))}"><input id="impRelay" placeholder="Relay URL (self-hosted only), e.g. https://relay.example.workers.dev/?url=" value="${esc(store.get('impRelay',''))}"></div>
+    <div class="form"><input id="impUrl" placeholder="https://yourevent.sched.com/all.ics" value="${esc(store.get('impUrl',''))}"><input id="impRelay" placeholder="${DEFAULT_RELAY?'Relay URL (optional; empty uses the public NowLine relay)':'Relay URL, e.g. https://relay.example.workers.dev/?url='}" value="${esc(store.get('impRelay',''))}"></div>
     <div class="row" style="margin-top:6px"><button class="btn" id="impFetch">Fetch</button></div>
-    <div class="note" style="margin-top:4px">Most schedule sites don't let browsers fetch their feeds directly, so fetching by link usually needs a small relay (a Cloudflare Worker; see the README). Without one, download the file and choose it above.</div>
+    <div class="note" style="margin-top:4px">Most schedule sites don't let browsers fetch their feeds directly, so fetching by link goes through a small relay${DEFAULT_RELAY?'':' (a Cloudflare Worker; see docs/relay.md). Without one, download the file and choose it above'}.</div>
     <h3>Or paste</h3>
     <div class="note">A calendar (.ics text), <b>pretalx / frab</b> <code>schedule.json</code>, <b>Sessionize</b> “All data” or “Schedule grid”, or the simple format. Times show in the event’s time zone when the schedule gives one (change it under “Time zone…”).</div>
     <textarea id="imp" placeholder='BEGIN:VCALENDAR… or {…}'></textarea>
@@ -917,7 +937,7 @@ function openImport(){
   $('imp').oninput=preview;
   $('impFile').onchange=e=>{const f=e.target.files[0]; if(!f) return; f.text().then(t=>{$('imp').value=t;preview();});};
   $('impFetch').onclick=async()=>{
-    const u=$('impUrl').value.trim(), r=$('impRelay').value.trim(); store.set('impUrl',u); store.set('impRelay',r);
+    const u=$('impUrl').value.trim(), typed=$('impRelay').value.trim(), r=typed||DEFAULT_RELAY; store.set('impUrl',u); store.set('impRelay',typed);
     if(!/^https:\/\//.test(u)){ $('impErr').textContent='Enter an https:// link.'; return; }
     $('impErr').textContent=''; $('impInfo').textContent='Fetching…';
     try{ const text=await fetchFeed(u,r); $('imp').value=text; fetched={text,feed:u,relay:r||null}; preview(); }
@@ -939,7 +959,7 @@ function boot(){
   S.here=store.get('here:'+data.name,null); if(S.here&&!venueById(S.here)) S.here=null;
   S.follow=true; S.anchorReal=Date.now(); S.anchorVirt=Date.now(); S.speed=1;
   S.dayAuto=true; pickDay(true);
-  S.stars=loadStars(store,data.name,data.sessions.map(s=>s.id));
+  S.stars=loadStars(store,data.name);
   S.blocks=store.get(blockKey(),null);
   if(!S.blocks){ S.blocks=[]; if(data.name.startsWith('Demo')) seedDemoAgenda(); }
   renderAll();
@@ -956,14 +976,14 @@ function seedDemoAgenda(){
 // A room sign for a schedule loaded from a link carries ?feed= (and &relay=). If that schedule isn't the
 // one stored here, fetch it, then jump to the room. Replacing a different imported schedule asks first.
 async function loadFromSign(sign){
-  openSheet(`<h2>Loading the schedule…</h2><div class="note">Fetching the schedule for the room sign you scanned.</div>`);
+  openSheet(`<h2>Loading the schedule…</h2><div class="note">Fetching the schedule ${sign.room?'for the room sign you scanned':'from the link you opened'}.</div>`);
   try{
     const d=parseAny(await fetchFeed(sign.feed,sign.relay)); d.source={feed:sign.feed,relay:sign.relay};
     if(sign.tz&&validZone(sign.tz)&&!validZone(d.tz)) saveZoneSettings(store,d.name,{...loadZoneSettings(store,d.name),event:sign.tz});
     data=d; store.set('data',d); S.hidden.clear(); store.set('hidden',[]); boot(); closeSheet();
     history.replaceState(null,'',withoutFeed(location.href)); handleHash();
   }catch(e){
-    openSheet(`<h2>Couldn't load the schedule</h2><div class="note">This room sign links to a schedule at ${esc(sign.feed)}, but it couldn't be loaded (${esc(e.message)}). Check your connection and reload the page, or use “Load schedule…”.</div><div class="row"><button class="btn" id="closeS">Close</button></div>`);
+    openSheet(`<h2>Couldn't load the schedule</h2><div class="note">This ${sign.room?'room sign':'link'} points to a schedule at ${esc(sign.feed)}, but it couldn't be loaded (${esc(e.message)}). Check your connection and reload the page, or use “Load schedule…”.</div><div class="row"><button class="btn" id="closeS">Close</button></div>`);
     $('closeS').onclick=closeSheet;
   }
 }
@@ -971,7 +991,7 @@ function signFeed(sign){
   if(data.source&&data.source.feed===sign.feed){ history.replaceState(null,'',withoutFeed(location.href)); handleHash(); return; }
   if(data.name.startsWith('Demo')){ loadFromSign(sign); return; }
   let host=sign.feed; try{host=new URL(sign.feed).hostname;}catch(e){}
-  openSheet(`<h2>Load this sign's schedule?</h2><div class="note">This room sign uses a schedule from <b>${esc(host)}</b>. Loading it replaces “${esc(data.name)}” on this device. Your stars and blocks are kept per schedule.</div>
+  openSheet(`<h2>Load this ${sign.room?"sign's":'shared'} schedule?</h2><div class="note">This ${sign.room?'room sign':'link'} uses a schedule from <b>${esc(host)}</b>. Loading it replaces “${esc(data.name)}” on this device. Your stars and blocks are kept per schedule.</div>
     <div class="row"><button class="btn on" id="sfGo">Load it</button><button class="btn" id="closeS">Keep “${esc(data.name)}”</button></div>`);
   $('sfGo').onclick=()=>loadFromSign(sign);
   $('closeS').onclick=()=>{closeSheet(); history.replaceState(null,'',withoutFeed(location.href)); handleHash();};

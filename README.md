@@ -46,6 +46,9 @@ Open NowLine, choose **Load schedule…**, and give it the event's export:
 Choosing a file or pasting text always works. Fetching by link needs a small [feed relay](docs/relay.md),
 because schedule sites don't send CORS headers.
 
+**Share it.** Once a schedule is loaded from its link, **Share…** gives you a link that opens the same
+schedule on anyone's phone. Post it in the event's chat.
+
 ## Run it for your event
 
 1. **Host it.** Fork the repo, then in *Settings → Pages* set *Source* to **GitHub Actions**. The
