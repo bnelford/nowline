@@ -121,10 +121,22 @@ describe('finish', () => {
     expect(d.buildings.n.walk).toEqual({ n: 1, s: 8 });
     expect(d.venues.map((v) => v.color)).toEqual([PALETTE[0], PALETTE[1]]);   // multi-building: building colors
   });
-  it('uses given buildings as-is', () => {
+  it('keeps valid given buildings', () => {
     const b = { n: { name: 'North', color: '#111', walk: { n: 1, s: 5 } }, s: { name: 'South', color: '#222', walk: { s: 1, n: 5 } } };
     const d = finish('x', venues(), [ok], b);
-    expect(d.buildings).toBe(b);
+    expect(d.buildings).toEqual(b);
     expect(d.venues.map((v) => v.color)).toEqual(['#111', '#222']);
+  });
+  it('sanitizes given buildings: hex colors only, numeric walk times, text names, no extra fields', () => {
+    const b = {
+      n: { name: 'North', color: '#111" onload="alert(1)', walk: { n: '1', s: '5"><script>', w: -2 }, map: { x: '"' } },
+      s: { color: 'red;}', walk: null },
+    };
+    const d = finish('x', venues(), [ok], b);
+    expect(d.buildings).toEqual({
+      n: { name: 'North', color: PALETTE[0], walk: { n: 1 } },
+      s: { name: 's', color: PALETTE[1], walk: {} },
+    });
+    expect(d.venues.map((v) => v.color)).toEqual([PALETTE[0], PALETTE[1]]);
   });
 });

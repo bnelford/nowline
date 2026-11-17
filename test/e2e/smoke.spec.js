@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { test, expect } from '@playwright/test';
 
 // Thin end-to-end check of the main flows against a static server (see playwright.config.js).
@@ -147,6 +148,22 @@ test('sign feed: asks before replacing a different schedule, and reports a faile
   await expect(f.page.locator('#sheet h2')).toHaveText("Couldn't load the schedule");
   await expect(f.page.locator('#sheet')).toContainText('HTTP 500');
   await f.ctx.close();
+  await ctx.close();
+});
+
+test('sign feed: markup in imported routes and building colors is shown as text, not run', async ({ browser, baseURL }) => {
+  const { ctx, page } = await fresh(browser);
+  const j = JSON.parse(readFileSync('fixtures/simple.json', 'utf8'));
+  j.routes = { 'hq>cafe': '<img src=x onerror="window.pwned=1">Cross the plaza.' };
+  j.buildings.cafe.color = '#fff" onmouseover="window.pwned=1';
+  await ctx.route(FEED, (r) => r.fulfill({ status: 200, body: JSON.stringify(j), contentType: 'application/json' }));
+  await page.goto(baseURL + '?feed=' + encodeURIComponent(FEED) + '#here-stage');
+  await expect(page.locator('#sheet h2')).toHaveText('Stage');
+  await page.locator('#sheet [data-to="Cafe"]').click();
+  await expect(page.locator('#dirOut')).toContainText('<img src=x onerror="window.pwned=1">Cross the plaza.');
+  await expect(page.locator('#dirOut img')).toHaveCount(0);
+  await expect(page.locator('[onmouseover]')).toHaveCount(0);
+  expect(await page.evaluate(() => window.pwned)).toBeUndefined();
   await ctx.close();
 });
 

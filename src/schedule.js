@@ -54,10 +54,23 @@ export function normalize(j){
   return withZone(finish(name,[...rooms.values()],sessions,null));
   function withZone(d){ d.tz=validZone(tz)?tz:null; if(floating) d.floating=d.tz||deviceZone(); return d; }
 }
+// Imported buildings are untrusted and end up in HTML/SVG attributes: keep only a text name, a hex color
+// (else a palette one) and numeric walk minutes.
+const HEX=/^#[0-9a-f]{3,8}$/i;
+export function cleanBuildings(buildings){
+  const out={};
+  Object.entries(buildings).forEach(([id,b],i)=>{
+    b=b||{}; const walk={};
+    Object.entries(b.walk||{}).forEach(([k,m])=>{ m=Number(m); if(isFinite(m)&&m>=0) walk[k]=m; });
+    out[id]={name:String(b.name??id),color:HEX.test(b.color)?b.color:PALETTE[i%PALETTE.length],walk};
+  });
+  return out;
+}
 export function finish(name,venues,sessions,buildings){
   sessions = sessions.filter(s=>s.title && isFinite(s.start) && isFinite(s.end) && s.end>s.start);
   if(!sessions.length) throw new Error('No sessions with valid start/end times found.');
-  if(!buildings){
+  if(buildings) buildings=cleanBuildings(buildings);
+  else{
     buildings={}; const ids=[...new Set(venues.map(v=>v.building))];
     ids.forEach((b,i)=>buildings[b]={name:b==='venue'?'Venue':b,color:PALETTE[i%PALETTE.length],walk:{}});
     // unknown geography: same building = 1 min, others = 8 min (editable later)

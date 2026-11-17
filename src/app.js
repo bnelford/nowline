@@ -468,7 +468,7 @@ function directions(fromId,toId,startAt){
   const w=walkBetween(fromId,toId), steps=[];
   if(A && A.building!==B.building){
     const r=(data.routes||{})[A.building+'>'+B.building];
-    steps.push(r||`Head to ${esc((data.buildings[B.building]||{}).name||B.building)}.`);
+    steps.push(r?esc(r):`Head to ${esc((data.buildings[B.building]||{}).name||B.building)}.`);
   } else if(A){ steps.push(`Stay in ${esc((data.buildings[A.building]||{}).name||'this building')}.`); }
   steps.push(`<b>${esc(B.name)}</b>: ${esc(B.where||'follow the room signs')}.`);
   let timing='';
