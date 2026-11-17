@@ -67,7 +67,12 @@ test('demo → skip tour → import → star → conflicting block → warning �
 // Room signs for a schedule loaded from a link carry ?feed=, so a phone that has never opened
 // NowLine loads that schedule on the first scan. The feed host is faked with page.route.
 const FEED = 'https://feeds.nowline.test/simple.json';
-const serveFeed = (ctx, status = 200) => ctx.route(FEED, (r) => r.fulfill({ status, path: 'fixtures/simple.json', contentType: 'application/json' }));
+// Serves the fixture at FEED, and through the default relay (app.js DEFAULT_RELAY) so tests never hit the real one.
+const serveFeed = async (ctx, status = 200) => {
+  const reply = (r) => r.fulfill({ status, path: 'fixtures/simple.json', contentType: 'application/json' });
+  await ctx.route(FEED, reply);
+  await ctx.route((u) => /^nowline-relay\./.test(u.hostname) && u.searchParams.get('url') === FEED, reply);
+};
 const fresh = async (browser) => {
   const ctx = await browser.newContext({ timezoneId: 'America/Los_Angeles', locale: 'en-US' });
   const page = await ctx.newPage();
@@ -135,6 +140,7 @@ test('share link: opens a feed-loaded schedule on a fresh device; demo and file 
   await org.page.locator('#shareBtn').click();
   const link = await org.page.locator('#shLink').inputValue();
   expect(new URL(link).searchParams.get('feed')).toBe(FEED);
+  expect(new URL(link).searchParams.get('relay')).toMatch(/^https:\/\/nowline-relay\./);   // the default relay travels with the link
   expect(new URL(link).hash).toBe('');
   await org.ctx.close();
 

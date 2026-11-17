@@ -43,8 +43,9 @@ Open NowLine, choose **Load schedule…**, and give it the event's export:
 | Swapcard, Cvent, others | Whole-event `.ics` |
 | Anything else | NowLine's [simple JSON](docs/importing.md#simple-event-json), which can also describe buildings, walk times and routes |
 
-Choosing a file or pasting text always works. Fetching by link needs a small [feed relay](docs/relay.md),
-because schedule sites don't send CORS headers.
+Choosing a file or pasting text always works. Fetching by link goes through a small [feed relay](docs/relay.md),
+because schedule sites don't send CORS headers. A public one for Sched, Sessionize and pretalx.com is used by
+default; deploy your own for anything else (for example a self-hosted pretalx).
 
 **Share it.** Once a schedule is loaded from its link, **Share…** gives you a link that opens the same
 schedule on anyone's phone. Post it in the event's chat.
@@ -55,7 +56,7 @@ schedule on anyone's phone. Post it in the event's chat.
    [Pages workflow](.github/workflows/pages.yml) tests and publishes the site to
    `https://<you>.github.io/<repo>/` on every push to `main`. Any other static host works too:
    `node scripts/site.js` copies the site into `_site/`, and all paths are relative.
-2. **Deploy the relay** (optional, needed to load by link): `npx wrangler deploy`. See [docs/relay.md](docs/relay.md).
+2. **Deploy your own relay** (optional; the public one covers Sched, Sessionize and pretalx.com): `npx wrangler deploy`. See [docs/relay.md](docs/relay.md).
 3. **Load the schedule from its feed link and print room signs.** Signs made from a feed-loaded schedule
    work on any phone, including one that has never opened NowLine. See [docs/room-signs.md](docs/room-signs.md).
 

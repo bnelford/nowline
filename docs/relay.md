@@ -2,7 +2,14 @@
 
 Sched, Sessionize and pretalx don't send CORS headers, so a browser can't fetch their feeds
 directly. [`nowline-feed-relay.js`](../nowline-feed-relay.js) is a small Cloudflare Worker that does
-that one job:
+that one job.
+
+NowLine uses a public instance, `https://nowline-relay.nelfordbc.workers.dev/?url=`, whenever the
+**Relay URL** field is left empty. It runs the default allow-list below, so a self-hosted pretalx or any
+other host needs your own deployment. The relay used for a fetch is carried in share links and room
+signs, so they keep working even if the default changes later.
+
+How it works:
 
 - Hosts are allow-listed by exact name, set by `ALLOWED_HOSTS` in [`wrangler.toml`](../wrangler.toml).
   The default is `sched.com .sched.com sessionize.com .sessionize.com pretalx.com`. An entry with a

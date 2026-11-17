@@ -20,7 +20,7 @@ const store = {
 };
 // Kokoro-82M voiceover clips, one per TOUR step (see THIRD_PARTY.md); missing clips fall back to speechSynthesis
 // Public feed relay used when the Relay URL field is empty ('' = none; see docs/relay.md)
-const DEFAULT_RELAY='';
+const DEFAULT_RELAY='https://nowline-relay.nelfordbc.workers.dev/?url=';
 const TOUR_AUDIO=Array.from({length:13},(_,i)=>`assets/tour/${String(i+1).padStart(2,'0')}.mp3`);
 
 /* ---------- state ---------- */
