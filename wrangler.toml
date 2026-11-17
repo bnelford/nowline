@@ -1,0 +1,14 @@
+# Cloudflare Worker config for the optional feed relay (nowline-feed-relay.js).
+# Deploy with:  npx wrangler deploy
+# The app itself is static files and does not use this.
+name = "nowline-relay"
+main = "nowline-feed-relay.js"
+compatibility_date = "2026-11-01"
+
+[vars]
+# Hosts the relay will fetch from, comma- or space-separated.
+#   "pretalx.com"  exact hostname only
+#   ".sched.com"   any subdomain (kccncna2026.sched.com), not sched.com itself
+# Only use a leading-dot entry for domains whose subdomains are all run by the platform.
+# Add self-hosted pretalx instances by exact name, e.g. "pretalx.fosdem.org".
+ALLOWED_HOSTS = "sched.com .sched.com sessionize.com .sessionize.com pretalx.com"

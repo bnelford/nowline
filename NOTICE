@@ -1,0 +1,11 @@
+NowLine
+Copyright 2026 Beau Nelford
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes third-party material under its own terms; see THIRD_PARTY.md:
+
+- vendor/qrcode.js: QR Code Generator for JavaScript, Copyright (c) 2009 Kazuhiko Arase,
+  MIT License. "QR Code" is a registered trademark of DENSO WAVE INCORPORATED.
+- assets/tour/*.mp3: tour voiceover generated offline with Kokoro-82M (hexgrad, Apache-2.0),
+  voice "af_heart".
