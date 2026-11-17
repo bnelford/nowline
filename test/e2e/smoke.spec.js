@@ -48,6 +48,9 @@ test('demo → skip tour → import → star → conflicting block → warning �
   // room-sign preview renders and points at this page by default
   await page.locator('#signsBtn').click();
   await expect(page.locator('#sgBase')).toHaveValue(page.url().replace(/#.*$/, ''));
+  // a pasted/file import can't travel in the QR link, so the generator says so
+  await expect(page.locator('#sgWarn')).toContainText("can't carry it");
+  await expect(page.locator('#sgOut [data-copy]').first()).toHaveAttribute('data-copy', /#here-stage$/);
   const signs = page.locator('#sgOut img');
   await expect(signs).toHaveCount(2);
   await expect(signs.first()).toHaveAttribute('src', /^data:image\/png;base64,/);
@@ -57,4 +60,99 @@ test('demo → skip tour → import → star → conflicting block → warning �
   await expect(page.locator('#sheet h2')).toHaveText('Stage');
 
   expect(problems).toEqual([]);
+});
+
+// Room signs for a schedule loaded from a link carry ?feed=, so a phone that has never opened
+// NowLine loads that schedule on the first scan. The feed host is faked with page.route.
+const FEED = 'https://feeds.nowline.test/simple.json';
+const serveFeed = (ctx, status = 200) => ctx.route(FEED, (r) => r.fulfill({ status, path: 'fixtures/simple.json', contentType: 'application/json' }));
+const fresh = async (browser) => {
+  const ctx = await browser.newContext({ timezoneId: 'America/Los_Angeles', locale: 'en-US' });
+  const page = await ctx.newPage();
+  await page.clock.install({ time: new Date('2026-11-12T07:00:00-08:00') });
+  return { ctx, page };
+};
+const skipTour = async (page) => { await page.locator('#tNo').click(); };
+
+test('sign from a feed-loaded schedule opens that schedule and room on a fresh device', async ({ browser, baseURL }) => {
+  // organizer: fetch the schedule by link, then make signs
+  const org = await fresh(browser);
+  await serveFeed(org.ctx);
+  await org.page.goto(baseURL);
+  await skipTour(org.page);
+  await org.page.locator('#importBtn').click();
+  await org.page.locator('#impUrl').fill(FEED);
+  await org.page.locator('#impFetch').click();
+  await expect(org.page.locator('#impInfo')).toContainText('Looks good: 2 sessions in 2 rooms');
+  await org.page.locator('#doImp').click();
+  await expect(org.page.locator('#confName')).toHaveText('My meetup');
+  await org.page.locator('#signsBtn').click();
+  await expect(org.page.locator('#sgFeed')).toBeVisible();
+  await expect(org.page.locator('#sgWarn')).toHaveCount(0);
+  const link = await org.page.locator('#sgOut [data-copy]').nth(1).getAttribute('data-copy');
+  expect(new URL(link).searchParams.get('feed')).toBe(FEED);
+  expect(new URL(link).hash).toBe('#here-cafe');
+
+  // the organizer's own device already has it: no re-import, straight to the room
+  await org.page.goto(link);
+  await expect(org.page.locator('#sheet h2')).toHaveText('Cafe');
+  await org.ctx.close();
+
+  // attendee: never opened NowLine
+  const att = await fresh(browser);
+  const problems = [];
+  att.page.on('pageerror', (e) => problems.push('pageerror: ' + e.message));
+  await serveFeed(att.ctx);
+  await att.page.goto(link);
+  await expect(att.page.locator('#confName')).toHaveText('My meetup');
+  await expect(att.page.locator('#sheet')).toContainText("You're here");
+  await expect(att.page.locator('#sheet h2')).toHaveText('Cafe');
+  await expect(att.page.locator('.tcard')).toHaveCount(0);           // no tour over the room on a scan
+  expect(new URL(att.page.url()).searchParams.has('feed')).toBe(false);
+  expect(new URL(att.page.url()).hash).toBe('#here-cafe');
+  // it stuck: a reload doesn't show the demo
+  await att.page.reload();
+  await expect(att.page.locator('#confName')).toHaveText('My meetup');
+  expect(problems).toEqual([]);
+  await att.ctx.close();
+});
+
+test('sign feed: asks before replacing a different schedule, and reports a failed fetch', async ({ browser, baseURL }) => {
+  const { ctx, page } = await fresh(browser);
+  await page.goto(baseURL);
+  await skipTour(page);
+  await page.locator('#importBtn').click();
+  await page.locator('#impFile').setInputFiles('fixtures/pretalx-schedule.json');
+  await page.locator('#doImp').click();
+  const mine = await page.locator('#confName').textContent();
+
+  const link = baseURL + '?feed=' + encodeURIComponent(FEED) + '#here-cafe';
+  await serveFeed(ctx);
+  await page.goto(link);
+  await expect(page.locator('#sheet h2')).toHaveText("Load this sign's schedule?");
+  await page.locator('#closeS').click();                               // keep mine
+  await expect(page.locator('#confName')).toHaveText(mine);
+  expect(new URL(page.url()).searchParams.has('feed')).toBe(false);
+
+  await page.goto(link);
+  await page.locator('#sfGo').click();
+  await expect(page.locator('#confName')).toHaveText('My meetup');
+  await expect(page.locator('#sheet h2')).toHaveText('Cafe');
+
+  // feed unreachable on a fresh device: say so instead of silently showing the demo
+  const f = await fresh(browser);
+  await serveFeed(f.ctx, 500);
+  await f.page.goto(link);
+  await expect(f.page.locator('#sheet h2')).toHaveText("Couldn't load the schedule");
+  await expect(f.page.locator('#sheet')).toContainText('HTTP 500');
+  await f.ctx.close();
+  await ctx.close();
+});
+
+test('old room-only sign links still work', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-11-12T07:00:00-08:00') });
+  await page.goto('/#here-wb');
+  await expect(page.locator('#confName')).toContainText('Demo: AgentWeek');
+  await skipTour(page);
+  await expect(page.locator('#sheet h2')).toHaveText('Workshop B');
 });

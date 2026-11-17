@@ -101,6 +101,8 @@ within a building and 8 minutes between buildings (3 minutes between floors for 
 ## Your agenda
 
 - **☆ Add to my schedule** on a session stars it. Stars are saved per event (by schedule name).
+  Stars saved by older versions in one shared list move to an event only when that event has a
+  session with the same id; the rest wait for the event they belong to.
 - **+ Block**, or tapping an empty slot in a lane, adds your own time block. You can attach it to a room.
 - **Import .ics…** in the *Me* lane adds events from your own calendar export as blocks.
 - After every change NowLine re-checks for overlaps and for walks longer than the gap, and shows
@@ -112,13 +114,22 @@ within a building and 8 minutes between buildings (3 minutes between floors for 
 `<page link>#here-<room-slug>`. Opening that link sets "I'm here" to the room and shows what's on
 there, plus directions and a leave-by time for your next stop.
 
+If the schedule was loaded **from a link** (Load schedule… → From a link), the QR link also carries
+that feed, plus the relay used to fetch it: `<page link>?feed=<feed URL>&relay=<relay URL>#here-<room-slug>`.
+A phone that has never opened NowLine fetches the schedule from it on the first scan, then jumps to
+the room. If a different imported schedule is already stored on the phone, NowLine asks before
+replacing it. The `feed`/`relay` parameters are removed from the address bar once handled.
+
 The **Page link** defaults to the page you have open, without its `#fragment`. Before printing,
 make sure it's the public URL attendees will be able to open. If you host the page somewhere
 other than where you're generating signs, set **Page link** to that URL.
 
-**Current limitation:** the link only identifies the room, not the schedule. A scan only works if the
-attendee's browser already has the same schedule loaded. On a phone that has never opened NowLine,
-the scan shows the demo instead. There's no way yet to ship a default schedule with a hosted copy.
+If the schedule was loaded from a **file or pasted text**, there's no link to carry, so the QR link
+only identifies the room. The sign generator warns about this: a scan only works on a phone that
+already has the same schedule loaded, and shows the demo otherwise. Load the schedule from its feed
+link and regenerate the signs to fix that. Older room-only sign links keep working as before.
+
+Keep the feed URL stable for the event: if it changes, printed signs keep pointing at the old one.
 
 ## Feed relay (optional)
 
@@ -126,9 +137,16 @@ Sched, Sessionize and pretalx don't send CORS headers, so a browser can't fetch 
 directly. [`nowline-feed-relay.js`](nowline-feed-relay.js) is a small Cloudflare Worker that does
 that one job:
 
-- Hosts are allow-listed: `sched.com` and `sessionize.com` with their subdomains, and any host whose
-  first label is `pretalx` (for example `pretalx.com` or `pretalx.fosdem.org`).
-- Only `https` targets, and only `GET`/`OPTIONS` requests, are accepted.
+- Hosts are allow-listed by exact name, set by `ALLOWED_HOSTS` in [`wrangler.toml`](wrangler.toml).
+  The default is `sched.com .sched.com sessionize.com .sessionize.com pretalx.com`. An entry with a
+  leading dot matches any subdomain (`.sched.com` covers `kccncna2026.sched.com`). Only use those for
+  domains whose subdomains are all run by the platform. Add self-hosted pretalx instances by exact
+  name, for example `ALLOWED_HOSTS = "… pretalx.fosdem.org"`.
+- Targets must be `https` on the default port, with no username or password in the URL. IP
+  literals, `localhost` and local names (`*.local`, `*.internal`, single-label hosts) are always
+  refused, even if listed. Redirects are followed manually (at most 3) and each hop is re-checked.
+- Only `GET`/`OPTIONS` requests are accepted. Upstream fetches time out after 10 seconds (504) and
+  responses over 10 MB are refused (502).
 - Responses are cached at the edge for 5 minutes and sent with `Access-Control-Allow-Origin: *`.
 
 ```sh
@@ -138,9 +156,7 @@ npx wrangler deploy        # uses wrangler.toml → worker "nowline-relay"
 Then paste `https://nowline-relay.<your-subdomain>.workers.dev/?url=` into the **Relay URL** field
 under **Load schedule…**.
 
-> The `pretalx.*` rule matches any domain that has a `pretalx.` subdomain, including domains you
-> don't control, so the relay can be pointed at those too. Tighten `ALLOW` to the instances you
-> actually use if that matters for your deployment.
+> The relay checks hostnames, not resolved IP addresses. An allowed host's DNS is trusted as-is.
 
 ## Development
 

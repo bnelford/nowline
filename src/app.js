@@ -6,7 +6,7 @@
 import { MIN, HOUR, normalize, rebaseToToday } from './schedule.js';
 import { parseICS, scheduleFromICS } from './ics.js';
 import { walkBetween as walkBetweenIn, agendaIssues as agendaIssuesIn } from './agenda.js';
-import { DEFAULT_SIGN_TEXT, roomSlug, roomLink, defaultSignBase, signBaseFrom } from './signs.js';
+import { DEFAULT_SIGN_TEXT, roomSlug, roomLink, defaultSignBase, signBaseFrom, parseSignLink, withoutFeed } from './signs.js';
 import { starsKey, loadStars } from './stars.js';
 import { demoData } from './demo.js';
 import { SAMPLE_SIMPLE } from './samples.js';
@@ -466,7 +466,7 @@ window.addEventListener('hashchange',handleHash);
 // a printable sign, drawn to a canvas and shown as an image so a phone can long-press → Save
 function wrap(ctx,text,maxW){const out=[];let line='';for(const w of text.split(' ')){const t=line?line+' '+w:w;if(ctx.measureText(t).width>maxW&&line){out.push(line);line=w;}else line=t;}if(line)out.push(line);return out;}
 function signImage(v,base,copy){
-  const url=roomLink(base,v), W=900,H=1200, c=document.createElement('canvas'); c.width=W;c.height=H;
+  const url=roomLink(base,v,data.source), W=900,H=1200, c=document.createElement('canvas'); c.width=W;c.height=H;
   const x=c.getContext('2d'), b=data.buildings[v.building]||{};
   x.fillStyle='#ffffff';x.fillRect(0,0,W,H);
   x.fillStyle=v.color||'#7cc4ff';x.fillRect(0,0,W,28);
@@ -488,9 +488,11 @@ function signImage(v,base,copy){
   return c.toDataURL('image/png');
 }
 function openSigns(){
-  const base=signBase(), copy=store.get('signText',DEFAULT_SIGN_TEXT);
+  const base=signBase(), copy=store.get('signText',DEFAULT_SIGN_TEXT), src=data.source&&data.source.feed?data.source:null;
   openSheet(`<h2>Room signs</h2>
-    <div class="note">One QR sign per room. Scanning it opens NowLine, sets “I'm here” to that room and shows directions to the person's next stop. Long-press (or right-click) a sign to save it, then print. The link only works for people who can open the page, so share it first, or point it at a self-hosted copy.</div>
+    <div class="note">One QR sign per room. Scanning it opens NowLine, sets “I'm here” to that room and shows directions to the person's next stop. Long-press (or right-click) a sign to save it, then print. Set the page link to the public address where attendees can open NowLine.</div>
+    ${src?`<div class="okbox" id="sgFeed">The QR links include this schedule's feed (${esc(src.feed)}), so a phone that has never opened NowLine loads it on the first scan.</div>`
+      :data.name.startsWith('Demo')?'':`<div class="warnbox" id="sgWarn">⚠ This schedule was loaded from a file or pasted text, so the QR links can't carry it. A phone that hasn't already loaded this schedule will see the demo instead. To make signs work on any phone, load the schedule from its feed link (Load schedule… → From a link), then generate the signs again.</div>`}
     <div class="form">
       <label>Sign text<textarea id="sgText" style="min-height:60px">${esc(copy)}</textarea></label>
       <label>Page link (where the QR points)<input id="sgBase" value="${esc(base)}"></label>
@@ -502,7 +504,7 @@ function openSigns(){
     // only an organizer override is saved, so the default keeps following wherever this copy is hosted
     b===defaultSignBase(location.href)?store.del('signBase'):store.set('signBase',b); store.set('signText',t);
     $('sgOut').innerHTML=data.venues.map(v=>`<h3>${esc(v.name)}</h3><img alt="QR sign for ${esc(v.name)}" src="${signImage(v,b,t)}" style="width:100%;max-width:420px;border-radius:10px;display:block">
-      <div class="row" style="margin-top:6px"><button class="btn" data-copy="${esc(roomLink(b,v))}">Copy link</button><button class="btn" data-try="${esc(v.id)}">Preview scan</button></div>`).join('');
+      <div class="row" style="margin-top:6px"><button class="btn" data-copy="${esc(roomLink(b,v,src))}">Copy link</button><button class="btn" data-try="${esc(v.id)}">Preview scan</button></div>`).join('');
     $('sgOut').querySelectorAll('[data-copy]').forEach(el=>el.onclick=()=>{
       const done=()=>{el.textContent='Copied';setTimeout(()=>el.textContent='Copy link',1500);};
       try{navigator.clipboard.writeText(el.dataset.copy).then(done,()=>{el.textContent=el.dataset.copy;});}catch(e){el.textContent=el.dataset.copy;}
@@ -838,6 +840,8 @@ function tourIntro(){
 $('tourBtn').onclick=()=>{ if(T.on) endTour(); else startTour(); };
 window.addEventListener('hashchange',()=>{ if(location.hash==='#tour'&&!T.on) tourIntro(); });
 
+const parseAny=txt=>{ const t=txt.replace(/^\uFEFF/,'').trim(); return /^BEGIN:VCALENDAR/i.test(t)?scheduleFromICS(t):normalize(JSON.parse(t)); };
+async function fetchFeed(u,r){ const res=await fetch(r? r+encodeURIComponent(u) : u); if(!res.ok) throw new Error('HTTP '+res.status); return res.text(); }
 function openImport(){
   openSheet(`<h2>Load a schedule</h2>
     <h3>From Sched (KubeCon, AGNTCon + MCPCon, Open Source Summit…)</h3>
@@ -846,7 +850,7 @@ function openImport(){
     <h3>From a link</h3>
     <div class="form"><input id="impUrl" placeholder="https://yourevent.sched.com/all.ics" value="${esc(store.get('impUrl',''))}"><input id="impRelay" placeholder="Relay URL (self-hosted only), e.g. https://relay.example.workers.dev/?url=" value="${esc(store.get('impRelay',''))}"></div>
     <div class="row" style="margin-top:6px"><button class="btn" id="impFetch">Fetch</button></div>
-    <div class="note" style="margin-top:4px">Fetching by link needs a small relay (a Cloudflare Worker); this hosted preview blocks fetching other sites, so use the file option here.</div>
+    <div class="note" style="margin-top:4px">Most schedule sites don't let browsers fetch their feeds directly, so fetching by link usually needs a small relay (a Cloudflare Worker; see the README). Without one, download the file and choose it above.</div>
     <h3>Or paste</h3>
     <div class="note">A calendar (.ics text), <b>pretalx / frab</b> <code>schedule.json</code>, <b>Sessionize</b> “All data” or “Schedule grid”, or the simple format. Times show in this device’s time zone.</div>
     <textarea id="imp" placeholder='BEGIN:VCALENDAR… or {…}'></textarea>
@@ -857,7 +861,7 @@ function openImport(){
   $('fill').onclick=()=>{$('imp').value=SAMPLE_SIMPLE;$('rebase').checked=true;};
   $('closeS').onclick=closeSheet;
   $('resetDemo').onclick=()=>{store.set('data',null);data=demoData();boot();closeSheet();};
-  const parseAny=txt=>{ const t=txt.replace(/^\uFEFF/,'').trim(); return /^BEGIN:VCALENDAR/i.test(t)?scheduleFromICS(t):normalize(JSON.parse(t)); };
+  let fetched=null;   // {text, feed, relay} from the last successful Fetch, so the loaded schedule remembers its link
   const preview=()=>{ try{ const d=parseAny($('imp').value); const days=new Set(d.sessions.map(s=>dayKey(s.start))).size;
       $('impInfo').textContent=`Looks good: ${d.sessions.length} sessions in ${d.venues.length} rooms over ${days} day${days>1?'s':''}${d.name?' · '+d.name:''}.`; $('impErr').textContent=''; }
     catch(e){ $('impInfo').textContent=''; if($('imp').value.trim()) $('impErr').textContent='Not readable yet: '+e.message; } };
@@ -867,13 +871,14 @@ function openImport(){
     const u=$('impUrl').value.trim(), r=$('impRelay').value.trim(); store.set('impUrl',u); store.set('impRelay',r);
     if(!/^https:\/\//.test(u)){ $('impErr').textContent='Enter an https:// link.'; return; }
     $('impErr').textContent=''; $('impInfo').textContent='Fetching…';
-    try{ const res=await fetch(r? r+encodeURIComponent(u) : u); if(!res.ok) throw new Error('HTTP '+res.status); $('imp').value=await res.text(); preview(); }
-    catch(e){ $('impInfo').textContent=''; $('impErr').textContent='Could not fetch it here ('+e.message+'). Download the file and choose it above, or set a relay URL on a self-hosted copy.'; }
+    try{ const text=await fetchFeed(u,r); $('imp').value=text; fetched={text,feed:u,relay:r||null}; preview(); }
+    catch(e){ $('impInfo').textContent=''; $('impErr').textContent='Could not fetch it ('+e.message+'). Download the file and choose it above, or set a relay URL.'; }
   };
   $('doImp').onclick=()=>{
     try{
       let d=parseAny($('imp').value);
       if($('rebase').checked) d=rebaseToToday(d);
+      if(fetched&&fetched.text===$('imp').value) d.source={feed:fetched.feed,relay:fetched.relay};
       data=d; store.set('data',d); S.hidden.clear(); store.set('hidden',[]); boot(); closeSheet();
     }catch(e){$('impErr').textContent='Could not read that: '+e.message;}
   };
@@ -884,7 +889,7 @@ function boot(){
   S.here=store.get('here:'+data.name,null); if(S.here&&!venueById(S.here)) S.here=null;
   S.follow=true; S.anchorReal=Date.now(); S.anchorVirt=Date.now(); S.speed=1;
   S.dayAuto=true; pickDay(true);
-  S.stars=loadStars(store,data.name);
+  S.stars=loadStars(store,data.name,data.sessions.map(s=>s.id));
   S.blocks=store.get(blockKey(),null);
   if(!S.blocks){ S.blocks=[]; if(data.name.startsWith('Demo')) seedDemoAgenda(); }
   renderAll();
@@ -898,10 +903,34 @@ function seedDemoAgenda(){
   if(ws){S.stars.add(ws.id);saveStars();}
   saveBlocks();
 }
+// A room sign for a schedule loaded from a link carries ?feed= (and &relay=). If that schedule isn't the
+// one stored here, fetch it, then jump to the room. Replacing a different imported schedule asks first.
+async function loadFromSign(sign){
+  openSheet(`<h2>Loading the schedule…</h2><div class="note">Fetching the schedule for the room sign you scanned.</div>`);
+  try{
+    const d=parseAny(await fetchFeed(sign.feed,sign.relay)); d.source={feed:sign.feed,relay:sign.relay};
+    data=d; store.set('data',d); S.hidden.clear(); store.set('hidden',[]); boot(); closeSheet();
+    history.replaceState(null,'',withoutFeed(location.href)); handleHash();
+  }catch(e){
+    openSheet(`<h2>Couldn't load the schedule</h2><div class="note">This room sign links to a schedule at ${esc(sign.feed)}, but it couldn't be loaded (${esc(e.message)}). Check your connection and reload the page, or use “Load schedule…”.</div><div class="row"><button class="btn" id="closeS">Close</button></div>`);
+    $('closeS').onclick=closeSheet;
+  }
+}
+function signFeed(sign){
+  if(data.source&&data.source.feed===sign.feed){ history.replaceState(null,'',withoutFeed(location.href)); handleHash(); return; }
+  if(data.name.startsWith('Demo')){ loadFromSign(sign); return; }
+  let host=sign.feed; try{host=new URL(sign.feed).hostname;}catch(e){}
+  openSheet(`<h2>Load this sign's schedule?</h2><div class="note">This room sign uses a schedule from <b>${esc(host)}</b>. Loading it replaces “${esc(data.name)}” on this device. Your stars and blocks are kept per schedule.</div>
+    <div class="row"><button class="btn on" id="sfGo">Load it</button><button class="btn" id="closeS">Keep “${esc(data.name)}”</button></div>`);
+  $('sfGo').onclick=()=>loadFromSign(sign);
+  $('closeS').onclick=()=>{closeSheet(); history.replaceState(null,'',withoutFeed(location.href)); handleHash();};
+}
 data = store.get('data',null) || demoData();
 if(data.name.startsWith('Demo')) data=demoData();  // always regenerate demo around today
 boot();
-handleHash();
-if(location.hash==='#tour' || !store.get('seenTour',false)){ store.set('seenTour',true); tourIntro(); }
+const sign=parseSignLink(location.href);
+if(sign.feed) signFeed(sign); else handleHash();
+// a first scan should land on the room, not the tour; it's still offered on the next visit
+if(location.hash==='#tour' || (!sign.feed && !store.get('seenTour',false))){ store.set('seenTour',true); tourIntro(); }
 setInterval(()=>tick(), 250);
 window.addEventListener('resize',()=>tick());
