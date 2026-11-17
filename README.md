@@ -11,7 +11,7 @@
 [![Tests](https://img.shields.io/endpoint?url=https%3A%2F%2Fbnelford.github.io%2Fnowline%2Ftests-badge.json)](https://github.com/bnelford/nowline/actions/workflows/pages.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/bnelford/nowline/badge)](https://scorecard.dev/viewer/?uri=github.com/bnelford/nowline)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Live demo](https://img.shields.io/badge/demo-live-ff4d5e.svg)](https://bnelford.github.io/nowline/)
+[![Live demo](https://img.shields.io/badge/demo-try_it_live-7cc4ff.svg)](https://bnelford.github.io/nowline/)
 
 A live conference timeline for attendees: what's on **now** and **next**, where you are, and whether
 you'll make it to your next session in time.
