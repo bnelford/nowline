@@ -17,7 +17,18 @@ and your own agenda is checked against the walk between rooms.
 **[Try the live demo →](https://bnelford.github.io/nowline/)** The demo's data is generated around the
 current time, so it's always mid-conference. **▶ Tour** plays a 90-second walkthrough.
 
-<img src="docs/demo.gif" width="400" alt="NowLine demo at 60× speed: rooms as swim lanes, a red now-line moving across them, the now/next strip, and a tight-connection warning for a walk longer than the gap">
+<table>
+  <tr>
+    <td align="center" width="33%"><img src="docs/demo.gif" width="260" alt="Timeline at 60× speed: rooms as swim lanes, a red now-line moving across them, the now/next strip, and a tight-connection warning for a walk longer than the gap"></td>
+    <td align="center" width="33%"><img src="docs/demo-map.gif" width="260" alt="Map view: you're at Keynote Stage; rooms listed by walking time; tapping Workshop B shows a 7-minute walk with directions, then the dashed walking route across 2nd St to the Annex"></td>
+    <td align="center" width="33%"><img src="docs/demo-scan.gif" width="260" alt="A Workshop B room sign on a wall reading 'Lost? Scan here'; a phone scans its QR code, NowLine opens with 'You're here: Workshop B', and tapping Keynote Stage shows a 7-minute walk with directions"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>What's on now</b>, and whether you'll make your next session</td>
+    <td align="center"><b>The walk</b> between rooms, with times and the route</td>
+    <td align="center"><b>Lost? Scan here.</b> A room sign tells your phone where you are</td>
+  </tr>
+</table>
 
 ## What it does
 

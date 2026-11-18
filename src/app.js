@@ -532,8 +532,12 @@ function signImage(v,base,copy){
     for(let r=0;r<n;r++)for(let k=0;k<n;k++) if(q.isDark(r,k)) x.fillRect(qx+k*cell,qy+r*cell,cell,cell);
     y=qy+cell*n+70;
   }
-  x.fillStyle='#0e1116';x.font='600 38px -apple-system,Segoe UI,Roboto,sans-serif';
-  wrap(x,copy,W-140).slice(0,4).forEach(l=>{x.fillText(l,(W-x.measureText(l).width)/2,y);y+=50;});
+  // short copy ("Lost? Scan here") is set large so it reads from across a hallway; longer copy stays small
+  x.fillStyle='#0e1116';x.font='800 68px -apple-system,Segoe UI,Roboto,sans-serif';
+  let lines=wrap(x,copy,W-140), lh=78;
+  if(lines.length>2){ x.font='600 38px -apple-system,Segoe UI,Roboto,sans-serif'; lines=wrap(x,copy,W-140).slice(0,4); lh=50; }
+  else y+=32;
+  lines.forEach(l=>{x.fillText(l,(W-x.measureText(l).width)/2,y);y+=lh;});
   x.fillStyle='#8a93a6';x.font='500 22px -apple-system,Segoe UI,Roboto,sans-serif';
   const foot='NowLine · '+roomSlug(v); x.fillText(foot,(W-x.measureText(foot).width)/2,H-36);
   return c.toDataURL('image/png');
