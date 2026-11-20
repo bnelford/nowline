@@ -25,6 +25,14 @@ The same link without the room is what **Share…** gives you: it loads the sche
 
 Keep the feed URL stable for the event: if it changes, printed signs keep pointing at the old one.
 
+If the schedule was loaded with a [venue file](importing.md#venue-file-venuejson), the links also carry
+`&venue=<venue file URL>`, so scanning phones get the same buildings, walk times and directions.
+
+**Print all** puts every room's sign into a print-only page, one sign per sheet, sized to fit both A4
+and US Letter, and opens the print dialog. Under each sign, the generator shows how long its QR link is.
+Over about 300 characters it warns you: a long link makes a dense QR code that's hard to scan from a
+distance. A shorter page link or feed URL fixes it.
+
 ## Stable links
 
 Printed signs stay on walls for days and sometimes get reused at the next edition of an event, so

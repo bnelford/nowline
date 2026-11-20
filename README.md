@@ -104,7 +104,7 @@ Platform notes, with the exact export URLs: [Sched](docs/platforms/sched.md),
 - [Your agenda](docs/agenda.md): stars, blocks, calendar import, and conflict checks
 - [Room signs](docs/room-signs.md): QR links, feed links, and printing
 - [Feed relay](docs/relay.md): what it allows, its limits, and deploying it
-- [Self-hosting](docs/self-host.md): your own copy, `nowline.config.json` and branding
+- [Self-hosting](docs/self-host.md): deploy your own in 5 minutes, `nowline.config.json`, branding, attendee mode, and embedding
 - Platforms: [Sched](docs/platforms/sched.md), [pretalx](docs/platforms/pretalx.md), [Sessionize](docs/platforms/sessionize.md)
 - [For organizers](organizers.html): a printable one-pager
 - [Privacy](PRIVACY.md), [Accessibility](ACCESSIBILITY.md), [Changelog](CHANGELOG.md), [Press kit](docs/press.md)

@@ -10,6 +10,8 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 export const SITE_FILES = ['index.html', 'organizers.html', 'docs', 'manifest.webmanifest', 'sw.js', 'src', 'vendor', 'assets'];
+// copied only when present: a self-hoster's config, and a venue overlay it may point at (docs/self-host.md)
+export const OPTIONAL_FILES = ['nowline.config.json', 'venue.json'];
 
 // Hash of every file under `dir` (paths and contents, in a stable order). Run it before stamping sw.js.
 export function contentHash(dir) {
@@ -42,8 +44,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   fs.rmSync(out, { recursive: true, force: true });
   fs.mkdirSync(out, { recursive: true });
   for (const f of SITE_FILES) fs.cpSync(path.join(root, f), path.join(out, f), { recursive: true });
+  const extra = OPTIONAL_FILES.filter((f) => fs.existsSync(path.join(root, f)));
+  for (const f of extra) fs.cpSync(path.join(root, f), path.join(out, f));
   const version = contentHash(out);
   const sw = path.join(out, 'sw.js');
   fs.writeFileSync(sw, stampVersion(fs.readFileSync(sw, 'utf8'), version));
-  console.log(`Site staged in ${path.relative(root, out)}/: ${SITE_FILES.join(', ')} (sw cache ${version})`);
+  console.log(`Site staged in ${path.relative(root, out)}/: ${SITE_FILES.concat(extra).join(', ')} (sw cache ${version})`);
 }

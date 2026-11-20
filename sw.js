@@ -18,6 +18,7 @@ const PRECACHE = [
   'manifest.webmanifest',
   'src/agenda.js',
   'src/app.js',
+  'src/config.js',
   'src/demo.js',
   'src/ics.js',
   'src/samples.js',

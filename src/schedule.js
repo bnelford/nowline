@@ -95,3 +95,44 @@ export function diffSessions(a,b){
   });
   return out;
 }
+
+/* ---------- venue overlay (venue.json): buildings, walk times, room → building/where, routes ----------
+   { buildings:{id:{name,color,walk:{otherId:min}}}, rooms:{"<feed room id or name>":{building,where}}, routes:{"a>b":"text"} }
+   Untrusted (fetched from a link): ids are checked, text is kept as plain capped strings (the UI escapes it
+   on output), colors go through cleanBuildings, walks are numbers. Rooms match by id, else by case-insensitive name. */
+const BAD_KEY=new Set(['__proto__','constructor','prototype']);
+const okId=k=>k.length>0&&k.length<=64&&!BAD_KEY.has(k)&&!k.includes('>');
+const plain=o=>o!==null&&typeof o==='object'&&!Array.isArray(o);
+const text=(s,n)=>typeof s==='string'?s.replace(/[\u0000-\u001f\u007f]+/g,' ').trim().slice(0,n):'';
+export function applyVenue(data,venue){
+  if(!plain(venue)) throw new Error('Venue file must be a JSON object.');
+  const vb=plain(venue.buildings)?Object.entries(venue.buildings).filter(([k,b])=>okId(k)&&plain(b)).slice(0,200):[];
+  const ids=new Set(vb.map(([k])=>k)), raw={};
+  vb.forEach(([k,b])=>{ const walk={};
+    if(plain(b.walk)) Object.entries(b.walk).forEach(([o,m])=>{ if(ids.has(o)&&typeof m==='number'&&isFinite(m)&&m>=0&&m<=1440) walk[o]=m; });
+    raw[k]={name:text(b.name,80)||k,color:b.color,walk};
+  });
+  const added=cleanBuildings(raw);
+  const byId=new Map(data.venues.map(v=>[String(v.id),v])), byName=new Map(data.venues.map(v=>[String(v.name).trim().toLowerCase(),v]));
+  const patch=new Map();
+  if(plain(venue.rooms)) Object.entries(venue.rooms).slice(0,5000).forEach(([k,r])=>{
+    if(!plain(r)) return;
+    const v=byId.get(k)||byName.get(k.trim().toLowerCase()); if(!v) return;
+    const p={}; if(typeof r.building==='string'&&ids.has(r.building)) p.building=r.building;
+    const w=text(r.where,200); if(w) p.where=w;
+    patch.set(v.id,{...patch.get(v.id),...p});
+  });
+  const venues=data.venues.map(v=>{ const {map,...rest}=v; return {...rest,...patch.get(v.id)}; });   // map positions get re-laid out
+  // the feed's own buildings stay for rooms the venue file doesn't place
+  const used=new Set(venues.map(v=>v.building)), buildings={...added};
+  Object.entries(data.buildings||{}).forEach(([k,b])=>{ if(used.has(k)&&!BAD_KEY.has(k)&&!buildings[k]){ const {map,...rest}=b; buildings[k]=rest; } });
+  const routes={...(data.routes||{})};
+  if(plain(venue.routes)) Object.entries(venue.routes).slice(0,2000).forEach(([k,t])=>{
+    const [a,b,...more]=k.split('>'); t=text(t,500);
+    if(!more.length&&ids.has(a)&&ids.has(b)&&t) routes[k]=t;
+  });
+  const single=Object.keys(buildings).length===1;
+  venues.forEach((v,i)=>v.color=single?PALETTE[i%PALETTE.length]:(buildings[v.building]||{}).color||PALETTE[i%PALETTE.length]);
+  const out={...data,buildings,venues,routes}; delete out.site;
+  return out;
+}

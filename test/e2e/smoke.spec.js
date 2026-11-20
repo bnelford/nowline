@@ -1,13 +1,21 @@
 import { readFileSync } from 'node:fs';
 import { test, expect } from '@playwright/test';
 
+// A fork's own nowline.config.json (docs/self-host.md) would load its real feed here: the tests always see none
+// unless they serve one themselves.
+const CONFIG = '**/nowline.config.json';
+const noConfig = (target) => target.route(CONFIG, (r) => r.fulfill({ status: 404, body: 'Not found' }));
+test.beforeEach(async ({ page }) => { await noConfig(page); });
+
 // Thin end-to-end check of the main flows against a static server (see playwright.config.js).
 // The clock is pinned to the morning of the simple fixture's day so "now" is deterministic.
 test('demo → skip tour → import → star → conflicting block → warning → room signs', async ({ page, baseURL }) => {
   const problems = [];
   page.on('pageerror', (e) => problems.push('pageerror: ' + e.message));
-  page.on('console', (m) => { if (m.type() === 'error') problems.push('console: ' + m.text()); });
-  page.on('response', (r) => { if (r.status() >= 400) problems.push(`${r.status()} ${r.url()}`); });
+  // nowline.config.json is optional (docs/self-host.md): its 404 is expected
+  const optional = (u) => /\/nowline\.config\.json$/.test(u || '');
+  page.on('console', (m) => { if (m.type() === 'error' && !optional(m.location().url)) problems.push('console: ' + m.text()); });
+  page.on('response', (r) => { if (r.status() >= 400 && !optional(r.url())) problems.push(`${r.status()} ${r.url()}`); });
 
   await page.clock.install({ time: new Date('2026-11-12T07:00:00-08:00') });
   await page.goto('./');   // relative to baseURL, which is a sub-path in the "subpath" project
@@ -75,6 +83,7 @@ const serveFeed = async (ctx, status = 200) => {
 };
 const fresh = async (browser) => {
   const ctx = await browser.newContext({ timezoneId: 'America/Los_Angeles', locale: 'en-US' });
+  await noConfig(ctx);
   const page = await ctx.newPage();
   await page.clock.install({ time: new Date('2026-11-12T07:00:00-08:00') });
   return { ctx, page };
@@ -151,7 +160,11 @@ test('share link: opens a feed-loaded schedule on a fresh device; demo and file 
   await expect(att.page.locator('#sheet.show')).toHaveCount(0);
   expect(new URL(att.page.url()).searchParams.has('feed')).toBe(false);
 
+  // a shared link opens in attendee mode: no organizer controls
+  await expect(att.page.locator('#importBtn')).toBeHidden();
+
   // a different imported schedule on this device: asks, worded as a shared link
+  await att.page.goto(baseURL + '?admin');
   await att.page.locator('#importBtn').click();
   await att.page.locator('#impFile').setInputFiles('fixtures/pretalx-schedule.json');
   await att.page.locator('#doImp').click();
@@ -214,8 +227,8 @@ test('old room-only sign links still work', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-11-12T07:00:00-08:00') });
   await page.goto('./#here-wb');
   await expect(page.locator('#confName')).toContainText('Demo: AgentWeek');
-  await skipTour(page);
   await expect(page.locator('#sheet h2')).toHaveText('Workshop B');
+  await expect(page.locator('.tcard')).toHaveCount(0);   // a scan lands on the room, not the tour
 });
 
 // Times are instants; the zone only changes how they're shown. pretalx gives Europe/Brussels, the
@@ -357,4 +370,170 @@ test('a malformed #here- fragment or a damaged save does not stop the app', asyn
   await expect(page.locator('#confName')).toContainText('Demo: AgentWeek');
   await expect(page.locator('#clock')).not.toHaveText('--:--');
   expect(errs).toEqual([]);
+});
+
+/* ---------- organizer features: venue overlay, attendee mode, print all, embed, nowline.config.json ---------- */
+const PRETALX = 'https://feeds.nowline.test/pretalx.json';
+const VENUE = 'https://venues.nowline.test/venue.json';
+const venueJson = {
+  buildings: {
+    hall: { name: 'Hall', color: '#112233', walk: { hall: 1, annex: 6 } },
+    annex: { name: 'Annex', color: '#445566', walk: { annex: 1, hall: 6 } },
+  },
+  rooms: { 'main stage': { building: 'hall', where: 'Ground floor' }, 'Room B': { building: 'annex', where: 'Up the stairs' } },
+  routes: { 'hall>annex': 'Cross the courtyard.' },
+};
+const ORG_ONLY = ['#importBtn', '#signsBtn', '#demoBtn', '#backBtn', '#fwdBtn'];
+const pretalxDevice = async (browser) => {
+  const ctx = await browser.newContext({ timezoneId: 'America/Los_Angeles', locale: 'en-US' });
+  await noConfig(ctx);
+  const page = await ctx.newPage();
+  await page.clock.install({ time: new Date('2026-11-12T09:10:00Z') });   // during "Opening" on Main Stage
+  const relayHits = [];
+  await ctx.route(PRETALX, (r) => r.fulfill({ status: 200, path: 'fixtures/pretalx-schedule.json', contentType: 'application/json' }));
+  await ctx.route(VENUE, (r) => r.fulfill({ status: 200, body: JSON.stringify(venueJson), contentType: 'application/json', headers: { 'access-control-allow-origin': '*' } }));
+  await ctx.route((u) => /^nowline-relay\./.test(u.hostname), (r) => { relayHits.push(r.request().url()); r.fulfill({ status: 502, body: 'relay not expected' }); });
+  return { ctx, page, relayHits };
+};
+
+test('venue overlay: &venue= replaces placeholder walk times, travels in share and sign links, and skips the relay', async ({ browser, baseURL }) => {
+  const { ctx, page, relayHits } = await pretalxDevice(browser);
+  const roomB = page.locator('.lab[data-venue="Room B"] small');
+
+  // the feed alone: one generated building, 1-minute walks
+  await page.goto(baseURL + '?feed=' + encodeURIComponent(PRETALX));
+  await expect(page.locator('#confName')).toHaveText('FixtureCamp 2026');
+  await page.locator('#hereSel').selectOption('Main Stage');
+  await expect(roomB).toHaveText('Venue · 1 min');
+
+  // the same feed with its venue file: asks (different overlay), then real buildings and walk times
+  await page.goto(baseURL + '?feed=' + encodeURIComponent(PRETALX) + '&venue=' + encodeURIComponent(VENUE));
+  await expect(page.locator('#sheet h2')).toHaveText('Load this shared schedule?');
+  await page.locator('#sfGo').click();
+  await expect(roomB).toHaveText('Annex · 6 min');
+  await page.locator('.lane:not(.me) .s', { hasText: 'Lightning talks' }).click();
+  await expect(page.locator('#sheet .note').first()).toContainText('6 min walk from you');
+  await page.locator('#closeS').click();
+  expect(relayHits).toEqual([]);   // both answered directly: the relay is only a fallback
+
+  // the venue stays on the links this schedule hands out
+  await page.locator('#shareBtn').click();
+  expect(new URL(await page.locator('#shLink').inputValue()).searchParams.get('venue')).toBe(VENUE);
+  await page.goto(baseURL + '?admin');
+  await page.locator('#signsBtn').click();
+  const sign = new URL(await page.locator('#sgOut [data-copy]').first().getAttribute('data-copy'));
+  expect(sign.searchParams.get('venue')).toBe(VENUE);
+  expect(sign.searchParams.get('feed')).toBe(PRETALX);
+  await ctx.close();
+});
+
+test('feed fetch goes direct first, and falls back to the relay only when that fails', async ({ browser, baseURL }) => {
+  const relay = 'https://nowline-relay.example.test/?url=';
+  const link = baseURL + '?feed=' + encodeURIComponent(FEED) + '&relay=' + encodeURIComponent(relay);
+  const viaRelay = async (ctx, hits) => ctx.route((u) => u.hostname === 'nowline-relay.example.test' && u.searchParams.get('url') === FEED,
+    (r) => { hits.push(1); r.fulfill({ status: 200, path: 'fixtures/simple.json', contentType: 'application/json' }); });
+
+  const a = await fresh(browser), aHits = [];
+  await a.ctx.route(FEED, (r) => r.fulfill({ status: 200, path: 'fixtures/simple.json', contentType: 'application/json' }));
+  await viaRelay(a.ctx, aHits);
+  await a.page.goto(link);
+  await a.page.locator('#sfGo').click();   // a relay that isn't the default always asks first
+  await expect(a.page.locator('#confName')).toHaveText('My meetup');
+  expect(aHits).toEqual([]);
+  await a.ctx.close();
+
+  const b = await fresh(browser), bHits = [];
+  await b.ctx.route(FEED, (r) => r.abort('failed'));   // like a CORS or network failure
+  await viaRelay(b.ctx, bHits);
+  await b.page.goto(link);
+  await b.page.locator('#sfGo').click();   // a relay that isn't the default always asks first
+  await expect(b.page.locator('#confName')).toHaveText('My meetup');
+  expect(bHits).toEqual([1]);
+  await b.ctx.close();
+});
+
+test('attendee mode: share links and a configured feed hide organizer controls unless ?admin or organizerTools', async ({ browser, baseURL }) => {
+  const { ctx, page } = await fresh(browser);
+  await serveFeed(ctx);
+  await page.goto(baseURL + '?feed=' + encodeURIComponent(FEED));
+  await expect(page.locator('#confName')).toHaveText('My meetup');
+  await expect(page.locator('body')).toHaveClass(/\battendee\b/);
+  for (const id of ORG_ONLY) await expect(page.locator(id)).toBeHidden();
+  await expect(page.locator('#shareBtn')).toBeVisible();
+  await expect(page.locator('.tcard')).toHaveCount(0);
+
+  await page.goto(baseURL + '?admin');
+  for (const id of ORG_ONLY) await expect(page.locator(id)).toBeVisible();
+  await ctx.close();
+
+  // a self-hosted copy with a config feed: loads it instead of the demo, no tour, attendee mode, branding applied
+  const cfg = { name: 'Acme Conf', feed: FEED, colors: { accent: '#123456', bg: 'red;}' }, tour: false };
+  const s = await fresh(browser);
+  await serveFeed(s.ctx);
+  const serveConfig = async (c) => { await s.ctx.unroute(CONFIG); await s.ctx.route(CONFIG, (r) => r.fulfill({ status: 200, body: JSON.stringify(c), contentType: 'application/json' })); };
+  await serveConfig(cfg);
+  await s.page.goto(baseURL);
+  await expect(s.page.locator('#confName')).toHaveText('My meetup');
+  await expect(s.page).toHaveTitle('Acme Conf · NowLine');
+  await expect(s.page.locator('.tcard')).toHaveCount(0);
+  await expect(s.page.locator('#tourBtn')).toBeHidden();
+  for (const id of ORG_ONLY) await expect(s.page.locator(id)).toBeHidden();
+  expect(await s.page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim())).toBe('#123456');
+  expect(await s.page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bg').trim())).toBe('#0e1116');
+
+  // organizerTools:true keeps the controls
+  await serveConfig({ ...cfg, organizerTools: true });
+  await s.page.reload();
+  await expect(s.page.locator('#confName')).toHaveText('My meetup');
+  for (const id of ORG_ONLY) await expect(s.page.locator(id)).toBeVisible();
+  await s.ctx.close();
+});
+
+test('room signs: "Print all" fills the print container, one sign per room, and long links are flagged', async ({ page }) => {
+  await page.addInitScript(() => { window.print = () => { window.__printed = (window.__printed || 0) + 1; }; });
+  await page.clock.install({ time: new Date('2026-11-12T07:00:00-08:00') });
+  await page.goto('./');
+  await skipTour(page);
+  await page.locator('#signsBtn').click();
+  const rooms = await page.locator('#sgOut img').count();
+  expect(rooms).toBeGreaterThan(1);
+  await expect(page.locator('#sgOut .sglen')).toHaveCount(rooms);
+  await expect(page.locator('#sgOut .sglen').first()).toContainText('QR link:');
+  await expect(page.locator('#sgOut .sglen.warnbox')).toHaveCount(0);
+
+  await page.locator('#sgPrint').click();
+  await expect.poll(() => page.evaluate(() => window.__printed)).toBe(1);
+  const printed = page.locator('#printSigns .psign img');
+  await expect(printed).toHaveCount(rooms);
+  await expect(printed.first()).toHaveAttribute('src', /^data:image\/png;base64,/);
+  await expect(page.locator('body')).toHaveClass(/\bprinting\b/);
+  await page.emulateMedia({ media: 'print' });
+  await expect(page.locator('#printSigns')).toBeVisible();
+  await expect(page.locator('#tl')).toBeHidden();
+  expect(await page.locator('#printSigns .psign').first().evaluate((el) => getComputedStyle(el).breakAfter)).toBe('page');
+  await page.emulateMedia({ media: 'screen' });
+
+  // a long page link makes a dense QR: each sign says so
+  await page.locator('#sgBase').fill('https://events.example.org/' + 'a'.repeat(320) + '/');
+  await page.locator('#sgGo').click();
+  await expect(page.locator('#sgOut .sglen.warnbox')).toHaveCount(rooms);
+  await expect(page.locator('#sgOut .sglen.warnbox').first()).toContainText('Long link');
+});
+
+test('embed mode: no header, organizer controls or tour, and nothing written to localStorage', async ({ browser, baseURL }) => {
+  const { ctx, page } = await fresh(browser);
+  await serveFeed(ctx);
+  await page.goto(baseURL + '?embed=1&feed=' + encodeURIComponent(FEED) + '&admin');
+  await expect(page.locator('.lane:not(.me) .s', { hasText: 'Welcome' })).toBeVisible();
+  await expect(page.locator('body')).toHaveClass(/\bembed\b/);
+  await expect(page.locator('header')).toBeHidden();
+  for (const id of ORG_ONLY) await expect(page.locator(id)).toBeHidden();   // even with ?admin
+  await expect(page.locator('.tcard')).toHaveCount(0);
+  await expect(page.locator('#sheet.show')).toHaveCount(0);                  // no "Load this schedule?" prompt
+  await page.locator('#hereSel').selectOption('Stage');
+  expect(new URL(page.url()).searchParams.get('feed')).toBe(FEED);           // kept: nothing is stored, so a reload needs it
+  expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('nowline:')))).toEqual([]);
+  await page.reload();
+  await expect(page.locator('.lane:not(.me) .s', { hasText: 'Welcome' })).toBeVisible();
+  await ctx.close();
 });

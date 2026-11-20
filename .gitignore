@@ -6,3 +6,4 @@ playwright-report/
 _site/
 coverage/
 reports/
+.claude/
