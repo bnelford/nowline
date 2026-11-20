@@ -120,3 +120,17 @@ describe('per-event stars', () => {
     expect([...loadStars(st, 'C')]).toEqual([]);
   });
 });
+
+describe('stars keyed by feed, falling back to the event name', () => {
+  const fakeStore = (o) => ({ get: (k, d) => (k in o ? o[k] : d) });
+  it('reads the new key, else the old one', () => {
+    const st = fakeStore({ [starsKey('Imported schedule')]: ['old'], [starsKey('https://a/feed')]: ['new'] });
+    expect([...loadStars(st, 'https://a/feed', 'Imported schedule')]).toEqual(['new']);
+    expect([...loadStars(st, 'https://b/feed', 'Imported schedule')]).toEqual(['old']);
+    expect([...loadStars(st, 'https://b/feed', 'Other')]).toEqual([]);
+  });
+  it('an emptied new key does not fall back', () => {
+    const st = fakeStore({ [starsKey('Imported schedule')]: ['old'], [starsKey('https://a/feed')]: [] });
+    expect([...loadStars(st, 'https://a/feed', 'Imported schedule')]).toEqual([]);
+  });
+});

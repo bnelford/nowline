@@ -66,6 +66,13 @@ export function parseWhen(v,tz){
   const a=[+m[1],+m[2]-1,+m[3],+m[4],+m[5],+(m[6]||0)];
   return {t:validZone(tz)?zonedToUtc(a,tz):new Date(...a).getTime(),floating:true};
 }
+// Outlook/Exchange calendars name zones the Windows way
+export const WIN_ZONES={'Eastern Standard Time':'America/New_York','Pacific Standard Time':'America/Los_Angeles',
+  'Central Standard Time':'America/Chicago','Mountain Standard Time':'America/Denver','GMT Standard Time':'Europe/London',
+  'W. Europe Standard Time':'Europe/Berlin','Central Europe Standard Time':'Europe/Budapest','Romance Standard Time':'Europe/Paris',
+  'AUS Eastern Standard Time':'Australia/Sydney','Tokyo Standard Time':'Asia/Tokyo','India Standard Time':'Asia/Kolkata',
+  'China Standard Time':'Asia/Shanghai','Singapore Standard Time':'Asia/Singapore'};
+export const winZone=z=>z&&Object.hasOwn(WIN_ZONES,z)?WIN_ZONES[z]:z;
 
 const pad=n=>String(n).padStart(2,'0');
 export const dayKey=(t,tz)=>{const p=wallParts(t,tz);return p.y+'-'+pad(p.mo+1)+'-'+pad(p.d);};
@@ -86,11 +93,12 @@ export function zoneLabel(tz,t=Date.now()){
 export const zoneCity=tz=>String(tz).split('/').pop().replace(/_/g,' ');
 
 // A schedule read with floating times remembers the zone it read them in (data.floating). Reading them in
-// another zone keeps each session's wall-clock time and moves the instant. Instants from offsets or Z are kept.
+// another zone keeps each session's wall-clock time and moves the instant. Only sessions marked floating at
+// parse time move; instants from offsets or Z are kept. Saves from before the marks: every session moves.
 export function rezone(data,tz){
   if(!data.floating||!validZone(tz)||!validZone(data.floating)||data.floating===tz) return data;
-  const mv=t=>{const p=wallParts(t,data.floating);return zonedToUtc([p.y,p.mo,p.d,p.h,p.mi,p.s],tz);};
-  data.sessions.forEach(s=>{s.start=mv(s.start);s.end=mv(s.end);});
+  const mv=t=>{const p=wallParts(t,data.floating);return zonedToUtc([p.y,p.mo,p.d,p.h,p.mi,p.s],tz);}, all=!data.sessions.some(s=>s.floating);
+  data.sessions.forEach(s=>{if(all||s.floating){s.start=mv(s.start);s.end=mv(s.end);}});
   data.floating=tz; return data;
 }
 // move whole days so the event's first day (in zone tz) is today (in zone tz); wall-clock times are kept across DST
@@ -102,17 +110,19 @@ export function shiftToToday(data,tz,now=Date.now()){
   data.sessions.forEach(s=>{s.start=mv(s.start);s.end=mv(s.end);}); return data;
 }
 
-/* ---------- per-event zone settings, stored as 'tz:<event name>' ----------
+/* ---------- per-event zone settings, stored as 'tz:<event key>' (the feed link, else the name) ----------
    event:   the event's zone when the schedule doesn't give one (null = this device's zone)
    display: 'event' (default), 'device', or an IANA zone */
 export const tzKey=name=>'tz:'+name;
-export function loadZoneSettings(store,name){
-  const v=store.get(tzKey(name),null)||{};
+// old: the key used before (the event name), read when nothing is saved under the new one
+export function loadZoneSettings(store,name,old){
+  const v=store.get(tzKey(name),null)||(old&&old!==name&&store.get(tzKey(old),null))||{};
   return {event:validZone(v.event)?v.event:null, display:v.display==='device'||validZone(v.display)?v.display:'event'};
 }
-export function saveZoneSettings(store,name,s){
+export function saveZoneSettings(store,name,s,old){
   const v={event:validZone(s.event)?s.event:null, display:s.display==='device'||validZone(s.display)?s.display:'event'};
-  if(!v.event&&v.display==='event') store.del(tzKey(name)); else store.set(tzKey(name),v);
+  // defaults are kept explicitly while an old key exists, so they don't fall back to it
+  if(!v.event&&v.display==='event'&&(!old||old===name)) store.del(tzKey(name)); else store.set(tzKey(name),v);
   return v;
 }
 // → {event, display, fromFeed}: the feed's zone wins, then the saved one, then the device's

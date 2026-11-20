@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { normalize, finish, hm, MIN, PALETTE } from '../../src/schedule.js';
+import { normalize, finish, hm, MIN, PALETTE, diffSessions } from '../../src/schedule.js';
 import { SAMPLE_SIMPLE } from '../../src/samples.js';
 
 const load = (f) => JSON.parse(readFileSync(new URL('../../fixtures/' + f, import.meta.url), 'utf8'));
@@ -138,5 +138,48 @@ describe('finish', () => {
       s: { name: 's', color: PALETTE[1], walk: {} },
     });
     expect(d.venues.map((v) => v.color)).toEqual([PALETTE[0], PALETTE[1]]);
+  });
+});
+
+describe('diffSessions', () => {
+  const s = (id, venue, start, title = 'T' + id) => ({ id, title, venue, start, end: start + 30 * MIN });
+  it('reports a changed room, a changed start, and a removed session; ignores unchanged and added ones', () => {
+    const a = [s('1', 'A', 0), s('2', 'A', 0), s('3', 'B', 0), s('4', 'B', 0)];
+    const b = [s('1', 'A', 0), s('2', 'C', 0, 'Renamed'), s('3', 'B', 15 * MIN), s('5', 'A', 0)];
+    expect(diffSessions(a, b).map(({ id, title, room, time, gone }) => ({ id, title, room, time, gone }))).toEqual([
+      { id: '2', title: 'Renamed', room: true, time: false, gone: false },
+      { id: '3', title: 'T3', room: false, time: true, gone: false },
+      { id: '4', title: 'T4', room: false, time: false, gone: true },
+    ]);
+  });
+  it('gives the old and new session', () => {
+    const [c] = diffSessions([s('1', 'A', 0)], [s('1', 'B', 0)]);
+    expect(c.was.venue).toBe('A');
+    expect(c.now.venue).toBe('B');
+  });
+  it('ignores an end-only change and is empty for identical lists', () => {
+    expect(diffSessions([s('1', 'A', 0)], [{ ...s('1', 'A', 0), end: 99 * MIN }])).toEqual([]);
+    expect(diffSessions([], [])).toEqual([]);
+  });
+});
+
+describe('floating marks per session', () => {
+  it('simple format: only sessions read without an offset are marked', () => {
+    const d = normalize({ sessions: [
+      { title: 'Float', start: '2026-11-12T09:00:00', end: '2026-11-12T10:00:00', venue: 'A' },
+      { title: 'Fixed', start: '2026-11-12T09:00:00Z', end: '2026-11-12T10:00:00Z', venue: 'A' },
+    ] });
+    expect(d.sessions.map((x) => !!x.floating)).toEqual([true, false]);
+    expect(d.floating).toBe('UTC');
+  });
+  it('no zone recorded when the only floating session was dropped as invalid', () => {
+    const d = normalize({ sessions: [
+      { title: 'Bad', start: '2026-11-12T09:00:00', venue: 'A' },
+      { title: 'Fixed', start: '2026-11-12T09:00:00Z', end: '2026-11-12T10:00:00Z', venue: 'A' },
+    ] });
+    expect(d.floating).toBeUndefined();
+  });
+  it('Sessionize sessions are all marked', () => {
+    expect(normalize(load('sessionize-all.json')).sessions.every((x) => x.floating)).toBe(true);
   });
 });

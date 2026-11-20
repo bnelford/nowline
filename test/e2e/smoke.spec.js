@@ -302,3 +302,59 @@ test('"Shift dates to today" keeps wall-clock times across a DST change', async 
   await expect(page.locator('.ruler .corner')).toHaveText('Thu, Jul 1');
   await expect(page.locator('#strip')).toContainText('Welcome');          // starts in 30 min: "next"
 });
+
+// A schedule loaded from a link is re-fetched (here: the 10-minute timer). A starred session that moved
+// rooms shows in its new lane with a notice; a failed fetch says the schedule is from the last good one.
+test('feed refresh: a moved room updates the timeline and tells you; a failed fetch shows offline', async ({ browser, baseURL }) => {
+  const { ctx, page } = await fresh(browser);
+  const problems = [];
+  page.on('pageerror', (e) => problems.push('pageerror: ' + e.message));
+  const j = JSON.parse(readFileSync('fixtures/simple.json', 'utf8'));
+  let status = 200, fetches = 0;
+  await ctx.route(FEED, (r) => { fetches++; return r.fulfill({ status, body: JSON.stringify(j), contentType: 'application/json' }); });
+  await page.goto(baseURL + '?feed=' + encodeURIComponent(FEED));
+  await expect(page.locator('#confName')).toHaveText('My meetup');
+  await expect(page.locator('#fresh')).toHaveText(/^Updated 7:00\sAM$/);
+  const lane = (room) => page.locator(`.track[data-venue="${room}"]:not([data-me]) .s`, { hasText: 'Welcome' });
+  await lane('Stage').click();
+  await page.locator('#starOne').click();
+  await page.locator('#closeS').click();
+
+  j.sessions[0].venue = 'Cafe';
+  await page.clock.fastForward('10:00');
+  await expect(lane('Cafe')).toBeVisible();
+  await expect(lane('Stage')).toHaveCount(0);
+  await expect(page.locator('#toast')).toContainText('Room changed: Welcome → Cafe');
+  await expect(page.locator('#fresh')).toHaveText(/^Updated 7:10\sAM$/);
+  await expect(lane('Cafe')).toHaveClass(/\bstar\b/);                    // still starred
+  expect(fetches).toBe(2);
+
+  status = 500;
+  await page.clock.fastForward('10:00');
+  await expect(page.locator('#fresh')).toHaveText(/^Offline · schedule from 7:10\sAM$/);
+  await expect(lane('Cafe')).toBeVisible();
+  expect(problems).toEqual([]);
+  await ctx.close();
+});
+
+test('a shared link through a relay other than NowLine’s always asks and names the relay, even over the demo', async ({ browser, baseURL }) => {
+  const { ctx, page } = await fresh(browser);
+  let hit = false;
+  await ctx.route((u) => u.hostname === 'relay.example.net', (r) => { hit = true; return r.abort(); });
+  await page.goto(baseURL + '?feed=' + encodeURIComponent(FEED) + '&relay=' + encodeURIComponent('https://relay.example.net/?url='));
+  await expect(page.locator('#sheet h2')).toHaveText('Load this shared schedule?');
+  await expect(page.locator('#sfRelay')).toHaveText('relay.example.net');
+  expect(hit).toBe(false);
+  await ctx.close();
+});
+
+test('a malformed #here- fragment or a damaged save does not stop the app', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-11-12T07:00:00-08:00') });
+  await page.addInitScript(() => localStorage.setItem('nowline:data', '{"name":"Broken","sessions":5}'));
+  const errs = [];
+  page.on('pageerror', (e) => errs.push(e.message));
+  await page.goto('./#here-%E0%A4');
+  await expect(page.locator('#confName')).toContainText('Demo: AgentWeek');
+  await expect(page.locator('#clock')).not.toHaveText('--:--');
+  expect(errs).toEqual([]);
+});

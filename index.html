@@ -34,6 +34,10 @@ header{display:flex;align-items:center;gap:10px;padding:10px 12px 6px}
 .clock{font-variant-numeric:tabular-nums;font-weight:700;font-size:15px;padding:4px 8px;border-radius:8px;background:var(--panel2)}
 .clock.sim{background:#3a2a10;color:var(--star)}
 .tzlab{margin-left:-6px;border:0;background:transparent;color:var(--dim);font-size:11px;font-weight:600;padding:4px 2px;cursor:pointer;white-space:nowrap}
+.fresh{color:var(--dim);font-size:11px;white-space:nowrap}
+.fresh.off{color:var(--star)}
+.toast{position:fixed;left:50%;top:calc(52px + env(safe-area-inset-top));transform:translateX(-50%);z-index:40;max-width:calc(100% - 32px);background:var(--panel2);border:1px solid var(--star);border-radius:12px;padding:10px 14px;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.4);display:none;cursor:pointer}
+.toast.show{display:block}
 .btn{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:6px 11px;cursor:pointer;white-space:nowrap}
 .btn.on{background:var(--accent);color:#06121e;border-color:var(--accent);font-weight:600}
 .btn.live.on{background:var(--now);border-color:var(--now);color:#fff}
@@ -199,7 +203,7 @@ body.mapmode .follow{display:none!important}
 <body>
 <header>
   <div class="brand">Now<span>Line</span></div>
-  <div class="conf" id="confName"></div>
+  <div class="conf" id="confName"></div><div class="fresh" id="fresh"></div>
   <button class="btn tourbtn" id="tourBtn">▶ Tour</button>
   <div class="clock" id="clock">--:--</div><button class="tzlab" id="tzLab" style="display:none"></button>
 </header>
@@ -243,6 +247,7 @@ body.mapmode .follow{display:none!important}
 
 <div class="scrim" id="scrim"></div>
 <div class="sheet" id="sheet"></div>
+<div class="toast" id="toast" role="status"></div>
 
 <!-- Served over http(s): ES modules don't load from file:// in most browsers. See README "Quick start". -->
 <script src="vendor/qrcode.js"></script>

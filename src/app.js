@@ -3,7 +3,7 @@
    sibling modules (schedule.js, ics.js, agenda.js, signs.js, stars.js);
    see schedule.js for the normalized data shape.
    ============================================================ */
-import { MIN, HOUR, normalize, rebaseToToday } from './schedule.js';
+import { MIN, HOUR, normalize, rebaseToToday, diffSessions } from './schedule.js';
 import { parseICS, scheduleFromICS } from './ics.js';
 import { walkBetween as walkBetweenIn, agendaIssues as agendaIssuesIn } from './agenda.js';
 import { DEFAULT_SIGN_TEXT, roomSlug, roomLink, shareLink, defaultSignBase, signBaseFrom, parseSignLink, withoutFeed } from './signs.js';
@@ -15,7 +15,7 @@ import { SAMPLE_SIMPLE } from './samples.js';
 
 const store = {
   get(k,d){try{const v=localStorage.getItem('nowline:'+k);return v?JSON.parse(v):d}catch(e){return d}},
-  set(k,v){try{localStorage.setItem('nowline:'+k,JSON.stringify(v))}catch(e){}},
+  set(k,v){try{localStorage.setItem('nowline:'+k,JSON.stringify(v));return true}catch(e){return false}},   // false: not saved (e.g. quota)
   del(k){try{localStorage.removeItem('nowline:'+k)}catch(e){}}
 };
 // Kokoro-82M voiceover clips, one per TOUR step (see THIRD_PARTY.md); missing clips fall back to speechSynthesis
@@ -36,13 +36,17 @@ const S = {
 // Z.display only decides how they're shown and how typed-in times (blocks) are read.
 let ZS={event:null,display:'event'}, Z={event:deviceZone(),display:deviceZone(),fromFeed:false};
 function loadZones(){
-  ZS=loadZoneSettings(store,data.name); Z=resolveZones(data,ZS,deviceZone());
+  ZS=loadZoneSettings(store,evKey(),data.name); Z=resolveZones(data,ZS,deviceZone()); MEMO={};
   data=rezone(data,Z.event);   // floating times (no offset in the feed) follow the event's zone
 }
+// per-event settings are keyed by the feed link when there is one (every Sessionize import is "Imported
+// schedule"), else the name; evGet falls back to the name key older saves used
+const evKey=()=>data.source?.feed||data.name;
+const evGet=(p,d)=>{const v=store.get(p+evKey());return v!==undefined?v:store.get(p+data.name,d);};
 // demo data is regenerated around today, so demo blocks are kept per day
-const blockKey=()=>'blocks:'+data.name+(data.name.startsWith('Demo')?':'+new Date().toDateString():'');
+const blockKey=()=>'blocks:'+evKey()+(data.name.startsWith('Demo')?':'+new Date().toDateString():'');
 const saveBlocks=()=>store.set(blockKey(),S.blocks);
-const saveStars=()=>store.set(starsKey(data.name),[...S.stars]);
+const saveStars=()=>store.set(starsKey(evKey()),[...S.stars]);
 
 /* ---------- personal agenda: blocks + starred sessions, and walk-time conflicts ---------- */
 const walkBetween=(a,b)=>walkBetweenIn(data,a,b);
@@ -79,12 +83,15 @@ function inRange(venueId){
   if(S.radius==='same') return venueById(venueId).building===venueById(S.here).building;
   return walkMin(venueId) <= Number(S.radius);
 }
-function allDays(){ return [...new Set(data.sessions.map(s=>dayKey(s.start)))].sort(); }
+// memoized per data + display zone (+ day); loadZones clears it because rezone moves times in place
+let MEMO={};
+function allDays(){ if(MEMO.d!==data||MEMO.z!==Z.display) MEMO={d:data,z:Z.display,days:[...new Set(data.sessions.map(s=>dayKey(s.start)))].sort()}; return MEMO.days; }
 function multiDay(){ return allDays().length>1; }
 function daySessions(){
   if(!multiDay()||!S.day) return data.sessions;
+  if(MEMO.day===S.day) return MEMO.ds;
   const a=dayStart(S.day,Z.display), b=dayStart(nextDayKey(S.day),Z.display);   // 23 or 25 h on DST days
-  return data.sessions.filter(s=>s.start<b&&s.end>a);
+  MEMO.day=S.day; return MEMO.ds=data.sessions.filter(s=>s.start<b&&s.end>a);
 }
 function visibleVenues(){
   const ds=daySessions(), used=multiDay()?new Set(ds.map(s=>s.venue)):null;
@@ -95,9 +102,11 @@ function pickDay(auto){
   if(auto||!S.day||!days.includes(S.day)) S.day=days.includes(today)?today:(days.find(d=>d>today)||days[days.length-1]);
 }
 function span(){
-  const ds=daySessions().length?daySessions():data.sessions;
-  const st=Math.min(...ds.map(s=>s.start)), en=Math.max(...ds.map(s=>s.end));
-  return {start:floorHour(st,Z.display), end:floorHour(en,Z.display)+HOUR};
+  const dd=daySessions(), ds=dd.length?dd:data.sessions;
+  let st=Math.min(...ds.map(s=>s.start)), en=Math.max(...ds.map(s=>s.end)), b=Infinity;
+  // clamp to the selected day, so one multi-day session doesn't stretch every day
+  if(dd.length&&multiDay()&&S.day){ b=dayStart(nextDayKey(S.day),Z.display); st=Math.max(st,dayStart(S.day,Z.display)); en=Math.min(en,b); }
+  return {start:floorHour(st,Z.display), end:Math.min(floorHour(en,Z.display)+HOUR,b)};
 }
 function relLabel(ms){const m=Math.round(ms/MIN); if(m<60) return m+' min'; return Math.floor(m/60)+'h '+(m%60? (m%60)+'m':'')}
 
@@ -115,13 +124,13 @@ function renderTimeline(){
   }
   h+=`</div></div>`;
   h+=renderMeLane(W);
-  const vs=visibleVenues();
+  const vs=visibleVenues(), ds=daySessions();
   for(const v of vs){
     const far=!inRange(v.id); const w=walkMin(v.id);
     const b=data.buildings[v.building]||{};
     h+=`<div class="lane${far?' far':''}" style="--c:${v.color}"><div class="lab" data-venue="${esc(v.id)}"><b>${esc(v.where&&v.name.includes('('+v.where+')')?v.name.replace('('+v.where+')','').trim():v.name)}</b><small>${esc(b.name||'')}${w!=null&&S.here!==v.id?' · '+w+' min':''}${S.here===v.id?' · you':''}</small></div>`;
     h+=`<div class="track" data-venue="${esc(v.id)}" style="width:${W}px;background-size:${30*S.ppm}px 100%">`;
-    for(const s of daySessions().filter(s=>s.venue===v.id && (!S.starOnly||S.stars.has(s.id)))){
+    for(const s of ds.filter(s=>s.venue===v.id && (!S.starOnly||S.stars.has(s.id)))){
       const l=X(s.start), wd=Math.max(X(s.end)-l-3,8);
       h+=`<div class="s${S.stars.has(s.id)?' star':''}" data-id="${esc(s.id)}" data-st="${s.start}" data-en="${s.end}" style="left:${l}px;width:${wd}px;--c:${v.color}"><div class="prog"></div><div class="t">${esc(s.title)}</div><div class="m">${fmt(s.start)}–${fmt(s.end)}${s.speakers.length?' · '+esc(s.speakers.join(', ')):''}</div></div>`;
     }
@@ -235,7 +244,7 @@ function renderStrip(){
 
 /* ---------- controls ---------- */
 function renderControls(){
-  $('confName').textContent=data.name;
+  $('confName').textContent=data.name; renderFresh();
   const hs=$('hereSel');
   hs.innerHTML=`<option value="">— anywhere —</option>`+data.venues.map(v=>`<option value="${esc(v.id)}">${esc(v.name)}</option>`).join('');
   hs.value=S.here||''; $('radiusSel').value=S.radius;
@@ -256,7 +265,7 @@ $('liveBtn').onclick=()=>{S.follow=true;S.dayAuto=true;pickDay(true);setClock(Da
 $('demoBtn').onclick=()=>{S.follow=true; S.speed>1?setClock(now(),1):setClock(now(),60);};
 $('backBtn').onclick=()=>{S.follow=true;setClock(now()-30*MIN,S.speed);};
 $('fwdBtn').onclick=()=>{S.follow=true;setClock(now()+30*MIN,S.speed);};
-$('hereSel').onchange=e=>{S.here=e.target.value||null;store.set('here:'+data.name,S.here);renderAll();};
+$('hereSel').onchange=e=>{S.here=e.target.value||null;store.set('here:'+evKey(),S.here);renderAll();};
 $('radiusSel').onchange=e=>{S.radius=e.target.value;store.set('radius',S.radius);if(S.radius!=='all'&&!S.here){openHerePrompt();}renderAll();};
 $('starBtn').onclick=()=>{S.starOnly=!S.starOnly;renderAll();};
 $('zoomIn').onclick=()=>{S.ppm=Math.min(8,S.ppm+1);store.set('ppm',S.ppm);S.follow=true;renderTimeline();};
@@ -277,7 +286,7 @@ document.addEventListener('click',e=>{
     openBlock(null,{start:t,venue:e.target.dataset.venue||S.here});return;
   }
   if(e.target.closest('#meLab')){openAgenda();return;}
-  const lab=e.target.closest('.lab[data-venue]'); if(lab){S.here=lab.dataset.venue;store.set('here:'+data.name,S.here);renderAll();}
+  const lab=e.target.closest('.lab[data-venue]'); if(lab){S.here=lab.dataset.venue;store.set('here:'+evKey(),S.here);renderAll();}
 });
 
 /* ---------- sheets ---------- */
@@ -307,7 +316,7 @@ function openSession(id){
     ${clash.length?`<h3>Happening at the same time</h3>`+clash.map(o=>{const ov=venueById(o.venue);return `<div class="card" data-jump="${esc(o.id)}" style="--c:${ov.color};width:auto;margin-bottom:6px"><div class="k"><span>${esc(ov.name)}</span><span>${fmt(o.start)}–${fmt(o.end)}</span></div><div class="t">${esc(o.title)}</div></div>`}).join(''):''}
   `);
   $('starOne').onclick=()=>{S.stars.has(s.id)?S.stars.delete(s.id):S.stars.add(s.id);saveStars();renderAll();openSession(id);};
-  $('goHere').onclick=()=>{S.here=s.venue;store.set('here:'+data.name,S.here);closeSheet();renderAll();};
+  $('goHere').onclick=()=>{S.here=s.venue;store.set('here:'+evKey(),S.here);closeSheet();renderAll();};
   $('closeS').onclick=closeSheet;
   $('sheet').querySelectorAll('[data-jump]').forEach(el=>el.onclick=()=>openSession(el.dataset.jump));
 }
@@ -325,7 +334,7 @@ function openLanes(){
 function openHerePrompt(){
   openSheet(`<h2>Where are you?</h2><div class="note">Distance filters need a starting point.</div><div class="chips" style="margin-top:10px">`+
     data.venues.map(v=>`<div class="chip" data-here="${esc(v.id)}" style="--c:${v.color}"><i></i>${esc(v.name)}</div>`).join('')+`</div>`);
-  $('sheet').querySelectorAll('[data-here]').forEach(el=>el.onclick=()=>{S.here=el.dataset.here;store.set('here:'+data.name,S.here);closeSheet();renderAll();});
+  $('sheet').querySelectorAll('[data-here]').forEach(el=>el.onclick=()=>{S.here=el.dataset.here;store.set('here:'+evKey(),S.here);closeSheet();renderAll();});
 }
 
 /* ---------- personal blocks: create / edit ---------- */
@@ -452,7 +461,7 @@ function openZones(){
   $('tzSave').onclick=()=>{
     const m=mode(), z=$('tzPick').value;
     if(m==='pick'&&!validZone(z)){ $('tzErr').textContent='Choose a time zone from the list.'; return; }
-    ZS=saveZoneSettings(store,data.name,{event:Z.fromFeed?ZS.event:($('tzEv').value||null),display:m==='pick'?z:m});
+    ZS=saveZoneSettings(store,evKey(),{event:Z.fromFeed?ZS.event:($('tzEv').value||null),display:m==='pick'?z:m},data.name);
     loadZones(); S.dayAuto=true; pickDay(true); S.follow=true; closeSheet(); renderAll();
   };
   $('closeS').onclick=closeSheet;
@@ -508,9 +517,9 @@ function openHere(id){
   $('closeS').onclick=closeSheet;
 }
 function handleHash(){
-  const h=decodeURIComponent(location.hash.slice(1)); if(!h.startsWith('here-')) return;
+  let h; try{h=decodeURIComponent(location.hash.slice(1));}catch(e){return;} if(!h.startsWith('here-')) return;
   const v=data.venues.find(v=>roomSlug(v)===h); if(!v) return;
-  S.here=v.id; store.set('here:'+data.name,S.here); S.follow=true; renderAll(); openHere(v.id);
+  S.here=v.id; store.set('here:'+evKey(),S.here); S.follow=true; renderAll(); openHere(v.id);
 }
 window.addEventListener('hashchange',handleHash);
 
@@ -564,7 +573,7 @@ function openSigns(){
       const done=()=>{el.textContent='Copied';setTimeout(()=>el.textContent='Copy link',1500);};
       try{navigator.clipboard.writeText(el.dataset.copy).then(done,()=>{el.textContent=el.dataset.copy;});}catch(e){el.textContent=el.dataset.copy;}
     });
-    $('sgOut').querySelectorAll('[data-try]').forEach(el=>el.onclick=()=>{S.here=el.dataset.try;store.set('here:'+data.name,S.here);renderAll();openHere(el.dataset.try);});
+    $('sgOut').querySelectorAll('[data-try]').forEach(el=>el.onclick=()=>{S.here=el.dataset.try;store.set('here:'+evKey(),S.here);renderAll();openHere(el.dataset.try);});
   };
   $('sgGo').onclick=draw; $('closeS').onclick=closeSheet; draw();
 }
@@ -707,7 +716,7 @@ function openRoom(id){
     <div class="row">${me&&me.id!==id?'<button class="btn on" id="rRoute">Show route on map</button>':''}${!me||me.id!==id?`<button class="btn ${me?'':'on'}" id="rHere">I'm here</button>`:''}<button class="btn" id="closeS">Close</button></div>`);
   $('sheet').querySelectorAll('[data-jump]').forEach(el=>el.onclick=()=>openSession(el.dataset.jump));
   if($('rRoute')) $('rRoute').onclick=()=>{mapRoute=id;closeSheet();setView('map');fitRoute(me,v);};
-  if($('rHere')) $('rHere').onclick=()=>{S.here=id;store.set('here:'+data.name,id);mapRoute=null;closeSheet();renderAll();renderMap(true);};
+  if($('rHere')) $('rHere').onclick=()=>{S.here=id;store.set('here:'+evKey(),id);mapRoute=null;closeSheet();renderAll();renderMap(true);};
   $('closeS').onclick=closeSheet;
 }
 function fitRoute(a,b){
@@ -754,7 +763,7 @@ const TOUR=[
   {ttl:'Now & next', say:"Up top: what's live this minute, and what starts in the next forty-five, with a heads-up when you need to leave.", target:()=>$('strip')},
   {ttl:'Where am I?', say:"Lost? Every room has a sign. Scan it with your phone's camera.", scene:'scan'},
   {ttl:"You're here", say:"NowLine now knows you're in Workshop B. It shows what's on in this room, and routes you to your next stop, with a leave-by time.",
-    before:async()=>{S.here='wb';store.set('here:'+data.name,'wb');renderAll();openHere('wb');await sleep(450);},
+    before:async()=>{S.here='wb';store.set('here:'+evKey(),'wb');renderAll();openHere('wb');await sleep(450);},
     target:()=>{const el=$('sheet').querySelector('.okbox,.warnbox');if(el)el.scrollIntoView({block:'center'});return el;}, pad:8},
   {ttl:'Step by step', say:"Turn by turn: cross the street, follow the Expo signs, the coffee bar is on your right.",
     target:()=>$('sheet').querySelector('ol'), pad:8},
@@ -914,7 +923,40 @@ $('tourBtn').onclick=()=>{ if(T.on) endTour(); else startTour(); };
 window.addEventListener('hashchange',()=>{ if(location.hash==='#tour'&&!T.on) tourIntro(); });
 
 const parseAny=txt=>{ const t=txt.replace(/^\uFEFF/,'').trim(); return /^BEGIN:VCALENDAR/i.test(t)?scheduleFromICS(t):normalize(JSON.parse(t)); };
-async function fetchFeed(u,r){ const res=await fetch(r? r+encodeURIComponent(u) : u); if(!res.ok) throw new Error('HTTP '+res.status); return res.text(); }
+async function fetchFeed(u,r,signal){ const res=await fetch(r? r+encodeURIComponent(u) : u,{signal}); if(!res.ok) throw new Error('HTTP '+res.status); return res.text(); }
+// a big schedule can exceed localStorage: it still works now, but say it won't survive a reload
+const saveData=d=>{ if(!store.set('data',d)) notice(["⚠ This schedule is too big to save on this device. It works now, but it won't survive a reload."]); };
+let toastT;
+function notice(lines){
+  const el=$('toast'); el.innerHTML=(el.classList.contains('show')?el.innerHTML:'')+lines.map(l=>`<div>${esc(l)}</div>`).join('');
+  el.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>el.classList.remove('show'),15000);
+}
+$('toast').onclick=()=>$('toast').classList.remove('show');
+
+/* ---------- feed refresh: re-fetch a schedule loaded from a link, and say what moved ---------- */
+let FRESH=true, refreshing=false;   // FRESH: the last refresh worked (else the header says "Offline")
+function renderFresh(){
+  const s=data.source, el=$('fresh');
+  el.textContent=!s?.feed?'':FRESH?(s.fetchedAt?'Updated '+fmt(s.fetchedAt):''):'Offline'+(s.fetchedAt?' · schedule from '+fmt(s.fetchedAt):'');
+  el.classList.toggle('off',!FRESH);
+}
+async function refreshFeed({force}={}){
+  const src=data.source; if(!src?.feed||refreshing) return;
+  if(navigator.onLine===false){ FRESH=false; renderFresh(); return; }
+  if(!force&&Date.now()-(src.fetchedAt||0)<5*MIN) return;
+  refreshing=true; const ac=new AbortController(), to=setTimeout(()=>ac.abort(),15000);
+  try{
+    const d=parseAny(await fetchFeed(src.feed,src.relay,ac.signal));   // no "shift dates to today" here
+    if(data.source?.feed!==src.feed) return;                          // something else was loaded meanwhile
+    const old=data, here=S.here; d.source={...src,fetchedAt:Date.now()};
+    data=d; FRESH=true; loadZones(); S.here=here&&venueById(here)?here:null; pickDay(S.dayAuto!==false); saveData(d); renderAll();
+    const name=id=>(venueById(id)||{name:id}).name;
+    const msgs=diffSessions(old.sessions,d.sessions).filter(c=>S.stars.has(c.id)).map(c=>c.gone?`Removed: ${c.title}`:
+      c.room?`Room changed: ${c.title} → ${name(c.now.venue)}`+(c.time?' at '+fmt(c.now.start):''):`Time changed: ${c.title} → ${fmt(c.now.start)}`);
+    if(msgs.length) notice(msgs);
+  }catch(e){ FRESH=false; renderFresh(); }
+  finally{ clearTimeout(to); refreshing=false; }
+}
 function openImport(){
   openSheet(`<h2>Load a schedule</h2>
     <h3>From Sched (KubeCon, AGNTCon + MCPCon, Open Source Summit…)</h3>
@@ -950,9 +992,9 @@ function openImport(){
   $('doImp').onclick=()=>{
     try{
       let d=parseAny($('imp').value);
-      if($('rebase').checked){ const ev=resolveZones(d,loadZoneSettings(store,d.name),deviceZone()).event; d=rebaseToToday(rezone(d,ev),ev); }
-      if(fetched&&fetched.text===$('imp').value) d.source={feed:fetched.feed,relay:fetched.relay};
-      data=d; store.set('data',d); S.hidden.clear(); store.set('hidden',[]); boot(); closeSheet();
+      if(fetched&&fetched.text===$('imp').value) d.source={feed:fetched.feed,relay:fetched.relay,fetchedAt:Date.now()};
+      if($('rebase').checked){ const ev=resolveZones(d,loadZoneSettings(store,d.source?.feed||d.name,d.name),deviceZone()).event; d=rebaseToToday(rezone(d,ev),ev); }
+      data=d; saveData(d); S.hidden.clear(); store.set('hidden',[]); FRESH=true; boot(); closeSheet();
     }catch(e){$('impErr').textContent='Could not read that: '+e.message;}
   };
 }
@@ -960,11 +1002,11 @@ function openImport(){
 /* ---------- boot ---------- */
 function boot(){
   loadZones();
-  S.here=store.get('here:'+data.name,null); if(S.here&&!venueById(S.here)) S.here=null;
+  S.here=evGet('here:',null); if(S.here&&!venueById(S.here)) S.here=null;
   S.follow=true; S.anchorReal=Date.now(); S.anchorVirt=Date.now(); S.speed=1;
   S.dayAuto=true; pickDay(true);
-  S.stars=loadStars(store,data.name);
-  S.blocks=store.get(blockKey(),null);
+  S.stars=loadStars(store,evKey(),data.name);
+  S.blocks=data.source?.feed?evGet('blocks:',null):store.get(blockKey(),null);
   if(!S.blocks){ S.blocks=[]; if(data.name.startsWith('Demo')) seedDemoAgenda(); }
   renderAll();
 }
@@ -982,9 +1024,9 @@ function seedDemoAgenda(){
 async function loadFromSign(sign){
   openSheet(`<h2>Loading the schedule…</h2><div class="note">Fetching the schedule ${sign.room?'for the room sign you scanned':'from the link you opened'}.</div>`);
   try{
-    const d=parseAny(await fetchFeed(sign.feed,sign.relay)); d.source={feed:sign.feed,relay:sign.relay};
-    if(sign.tz&&validZone(sign.tz)&&!validZone(d.tz)) saveZoneSettings(store,d.name,{...loadZoneSettings(store,d.name),event:sign.tz});
-    data=d; store.set('data',d); S.hidden.clear(); store.set('hidden',[]); boot(); closeSheet();
+    const d=parseAny(await fetchFeed(sign.feed,sign.relay)); d.source={feed:sign.feed,relay:sign.relay,fetchedAt:Date.now()};
+    if(sign.tz&&validZone(sign.tz)&&!validZone(d.tz)) saveZoneSettings(store,sign.feed,{...loadZoneSettings(store,sign.feed,d.name),event:sign.tz},d.name);
+    data=d; saveData(d); S.hidden.clear(); store.set('hidden',[]); FRESH=true; boot(); closeSheet();
     history.replaceState(null,'',withoutFeed(location.href)); handleHash();
   }catch(e){
     openSheet(`<h2>Couldn't load the schedule</h2><div class="note">This ${sign.room?'room sign':'link'} points to a schedule at ${esc(sign.feed)}, but it couldn't be loaded (${esc(e.message)}). Check your connection and reload the page, or use “Load schedule…”.</div><div class="row"><button class="btn" id="closeS">Close</button></div>`);
@@ -992,20 +1034,28 @@ async function loadFromSign(sign){
   }
 }
 function signFeed(sign){
-  if(data.source&&data.source.feed===sign.feed){ history.replaceState(null,'',withoutFeed(location.href)); handleHash(); return; }
-  if(data.name.startsWith('Demo')){ loadFromSign(sign); return; }
-  let host=sign.feed; try{host=new URL(sign.feed).hostname;}catch(e){}
-  openSheet(`<h2>Load this ${sign.room?"sign's":'shared'} schedule?</h2><div class="note">This ${sign.room?'room sign':'link'} uses a schedule from <b>${esc(host)}</b>. Loading it replaces “${esc(data.name)}” on this device. Your stars and blocks are kept per schedule.</div>
+  if(data.source&&data.source.feed===sign.feed){ history.replaceState(null,'',withoutFeed(location.href)); handleHash(); refreshFeed({force:true}); return; }
+  // a relay that isn't NowLine's sees (and could change) the schedule, so always ask and name it
+  const odd=sign.relay&&sign.relay!==DEFAULT_RELAY, hostOf=u=>{try{return new URL(u).hostname;}catch(e){return u;}};
+  if(data.name.startsWith('Demo')&&!odd){ loadFromSign(sign); return; }
+  const host=hostOf(sign.feed);
+  openSheet(`<h2>Load this ${sign.room?"sign's":'shared'} schedule?</h2><div class="note">This ${sign.room?'room sign':'link'} uses a schedule from <b>${esc(host)}</b>${odd?`, fetched through the relay <b id="sfRelay">${esc(hostOf(sign.relay))}</b>, which isn't NowLine's. That server sees the schedule and could change it`:''}. Loading it replaces “${esc(data.name)}” on this device. Your stars and blocks are kept per schedule.</div>
     <div class="row"><button class="btn on" id="sfGo">Load it</button><button class="btn" id="closeS">Keep “${esc(data.name)}”</button></div>`);
   $('sfGo').onclick=()=>loadFromSign(sign);
   $('closeS').onclick=()=>{closeSheet(); history.replaceState(null,'',withoutFeed(location.href)); handleHash();};
 }
-data = store.get('data',null) || demoData();
+data = store.get('data',null);
+// a damaged or foreign save shouldn't stop the app: fall back to the demo
+if(!data||typeof data.name!=='string'||!Array.isArray(data.sessions)||!Array.isArray(data.venues)||!data.buildings||typeof data.buildings!=='object') data=demoData();
 if(data.name.startsWith('Demo')) data=demoData();  // always regenerate demo around today
-boot();
+boot(); refreshFeed();
 const sign=parseSignLink(location.href);
 if(sign.feed) signFeed(sign); else handleHash();
 // a first scan should land on the room, not the tour; it's still offered on the next visit
 if(location.hash==='#tour' || (!sign.feed && !store.get('seenTour',false))){ store.set('seenTour',true); tourIntro(); }
-setInterval(()=>tick(), 250);
+// 1 s is smooth at real time (a few px per minute); fast-forward needs 250 ms. Nothing runs while hidden.
+(function loop(){ setTimeout(loop,S.speed>1?250:1000); if(!document.hidden) tick(); })();
 window.addEventListener('resize',()=>tick());
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ tick(); refreshFeed(); } });
+window.addEventListener('online',()=>refreshFeed({force:true}));
+setInterval(()=>{ if(!document.hidden) refreshFeed(); },10*MIN);
