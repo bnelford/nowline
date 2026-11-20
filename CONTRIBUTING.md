@@ -9,8 +9,9 @@ Thanks for helping. NowLine is small on purpose, and these notes are mostly abou
   modules.
 - **No required backend.** All personal data stays in the browser. Server-side pieces, like the feed
   relay, must stay optional, and the app must work without them.
-- **Read, don't replace.** NowLine reads exports from Sessionize, pretalx, Indico, Sched and similar
-  tools. It isn't a scheduling, CFP or registration system.
+- **Read, don't replace.** NowLine reads exports from Sched, pretalx (and frab), Sessionize, and other
+  tools that publish a whole-event `.ics`. It isn't a scheduling, CFP or registration system. Other
+  sources, Indico for example, aren't supported; open an issue before starting an importer.
 - **Keep pure logic pure.** Parsing, normalizing, and agenda/walk-time logic go in `src/*.js`
   modules with no DOM or `localStorage` access, so they can be unit-tested. `src/app.js` is the only
   module that touches the page.
