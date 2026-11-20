@@ -14,7 +14,11 @@ and a disclosure date with you, and credit you if you'd like.
 
 ## Supported versions
 
-Only the latest `main` is supported. There are no released versions yet.
+Only the latest release is supported. Fixes land on `main` and ship in the next release; they are
+not backported to older ones.
+
+Fixes won't rename or repurpose the room-sign link parameters listed under
+[stable links](docs/room-signs.md#stable-links), so printed signs keep working after you update.
 
 ## Scope
 

@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NowLine for organizers</title>
+<meta name="description" content="A live timeline for your conference schedule. Paste your feed link, share one link, print a QR sign per room. Free, open source, no accounts.">
+<link rel="icon" href="./assets/brand/favicon.svg" type="image/svg+xml">
+<style>
+:root{
+  --bg:#0e1116;--panel:#161a22;--line:#2a3140;--text:#e8ecf3;--dim:#8a93a6;
+  --accent:#7cc4ff;--now:#ff4d5e;
+}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0 auto;max-width:860px;padding:32px 20px 48px;background:var(--bg);color:var(--text);
+  font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--accent)}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;
+  padding-bottom:20px;border-bottom:2px solid var(--now)}
+header img{display:block;height:44px;width:auto}
+.logo-light{display:none}
+.cta{display:inline-block;padding:9px 16px;border-radius:999px;background:var(--accent);color:#06121e;
+  font-weight:600;text-decoration:none}
+h1{font-size:28px;line-height:1.2;margin:28px 0 8px}
+h2{font-size:19px;margin:32px 0 10px;color:var(--accent)}
+p{margin:0 0 12px}
+.lede{font-size:18px;color:var(--text)}
+.dim{color:var(--dim)}
+ol.steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+ol.steps li{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+ol.steps b{display:block;font-size:17px;margin-bottom:4px}
+ol.steps .n{display:inline-block;width:26px;height:26px;border-radius:50%;background:var(--now);color:#fff;
+  font-weight:700;text-align:center;line-height:26px;margin-bottom:8px}
+ul{margin:0 0 12px;padding-left:20px}
+li{margin:4px 0}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.gifs{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:8px}
+.gifs a{display:block;text-decoration:none;color:var(--text);background:var(--panel);border:1px solid var(--line);
+  border-radius:12px;padding:10px;text-align:center}
+.gifs img{display:block;width:100%;height:auto;border-radius:8px;margin-bottom:8px}
+.gifs span{font-size:14px}
+footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--line);font-size:14px;color:var(--dim)}
+.print-only{display:none}
+@media (max-width:640px){
+  ol.steps,.cols,.gifs{grid-template-columns:1fr}
+  h1{font-size:24px}
+}
+@media print{
+  @page{margin:14mm}
+  :root{--bg:#fff;--panel:#fff;--line:#c9ced8;--text:#111;--dim:#444;--accent:#0b5cad;--now:#d4142a}
+  html,body{background:#fff;color:#111}
+  body{max-width:none;padding:0;font-size:11pt;line-height:1.4}
+  .logo-dark,.cta{display:none}
+  .logo-light{display:block}
+  h1{font-size:20pt;margin-top:14pt}
+  h2{font-size:13pt;margin:16pt 0 6pt;color:#111}
+  a{color:#111;text-decoration:none}
+  .gifs img{display:none}
+  .gifs a{padding:6pt}
+  .print-only{display:inline}
+  ol.steps li,.gifs a{break-inside:avoid}
+  section{break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<header>
+  <a href="./"><img class="logo-dark" src="./assets/brand/logo-dark.svg" alt="NowLine" width="215" height="44"><img class="logo-light" src="./assets/brand/logo.svg" alt="NowLine" width="215" height="44"></a>
+  <a class="cta" href="./">Open NowLine</a>
+</header>
+
+<main>
+<h1>Your conference schedule, live.</h1>
+<p class="lede">NowLine turns the schedule you already publish into a live timeline on every attendee's
+phone: what's on now, what's next, and whether they'll make the walk to their next session.</p>
+<p class="dim">It reads Sched, pretalx, Sessionize, or any whole-event <code>.ics</code> export. Your schedule
+tool stays the source of truth. NowLine isn't a CFP, ticketing or schedule-authoring tool.</p>
+
+<section>
+<h2>Three steps</h2>
+<ol class="steps">
+  <li><span class="n">1</span><b>Paste your feed link</b>Open NowLine, choose <i>Load schedule…</i>, and paste your
+    Sched, pretalx or Sessionize export URL.</li>
+  <li><span class="n">2</span><b>Share</b><i>Share…</i> gives you one link that opens your schedule on any phone.
+    Post it in the event chat, the app, or the welcome email.</li>
+  <li><span class="n">3</span><b>Print signs</b><i>Room signs… → Print all</i> makes a QR sign for every room.
+    Tape one by each door.</li>
+</ol>
+</section>
+
+<div class="cols">
+<section>
+<h2>What attendees get</h2>
+<ul>
+  <li>Every room as a lane, with a red line at the current time.</li>
+  <li>What's on now and what starts next, at a glance.</li>
+  <li>Starred sessions and their own blocks, checked for overlaps and for walks longer than the gap.</li>
+  <li>Scan a room sign: "You're here", with directions and a leave-by time for the next stop.</li>
+  <li>Automatic updates while the app is open, with notices when a session changes room.</li>
+  <li>Works offline once loaded, and installs to the home screen.</li>
+</ul>
+</section>
+
+<section>
+<h2>Privacy</h2>
+<ul>
+  <li>No accounts, no sign-up, no analytics or tracking.</li>
+  <li>Stars, agenda and location stay in the attendee's browser.</li>
+  <li>Fetching your feed goes through a small relay, which sees the feed URL and the phone's IP
+    address. Run your own relay to keep that in-house.</li>
+</ul>
+<p class="dim">Details: <a href="https://github.com/bnelford/nowline/blob/main/PRIVACY.md">PRIVACY.md</a></p>
+</section>
+</div>
+
+<div class="cols">
+<section>
+<h2>Cost</h2>
+<ul>
+  <li>Free to use.</li>
+  <li>Open source under the Apache License 2.0.</li>
+  <li>Self-hosting is optional: the public copy and relay work as they are.</li>
+</ul>
+</section>
+
+<section>
+<h2>Deploy your own</h2>
+<p>Fork the repository and turn on GitHub Pages, or copy the static files to any web host. Add a
+<code>nowline.config.json</code> for your event's name and branding, and deploy your own relay with
+one command if your schedule is on a host the public relay doesn't allow.</p>
+<p class="dim"><a href="https://github.com/bnelford/nowline/blob/main/docs/self-host.md">Self-hosting guide</a> ·
+<a href="https://github.com/bnelford/nowline/blob/main/docs/relay.md">Relay guide</a></p>
+</section>
+</div>
+
+<section>
+<h2>See it working</h2>
+<div class="gifs">
+  <a href="docs/demo.gif"><img src="docs/demo.gif" width="400" height="760" loading="lazy" alt="Timeline: rooms as swim lanes, a red now-line moving across them, and a tight-connection warning"><span>What's on now, and whether you'll make your next session</span><span class="print-only"><br>docs/demo.gif</span></a>
+  <a href="docs/demo-map.gif"><img src="docs/demo-map.gif" width="400" height="760" loading="lazy" alt="Map view: rooms listed by walking time, and a dashed walking route between buildings"><span>The walk between rooms, with times and the route</span><span class="print-only"><br>docs/demo-map.gif</span></a>
+  <a href="docs/demo-scan.gif"><img src="docs/demo-scan.gif" width="400" height="760" loading="lazy" alt="A phone scans a room sign's QR code and NowLine opens with 'You're here: Workshop B'"><span>Lost? Scan here. A room sign tells the phone where it is</span><span class="print-only"><br>docs/demo-scan.gif</span></a>
+</div>
+</section>
+
+<section>
+<h2>Questions</h2>
+<p>Open an issue on GitHub: <a href="https://github.com/bnelford/nowline/issues">github.com/bnelford/nowline/issues</a>.
+To try it, <a href="./">open NowLine</a>: the demo is always mid-conference.</p>
+</section>
+</main>
+
+<footer>
+NowLine is licensed under the Apache License 2.0. It isn't affiliated with Sched, pretalx or Sessionize.
+</footer>
+</body>
+</html>

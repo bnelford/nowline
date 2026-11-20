@@ -8,11 +8,20 @@
 [![CI](https://github.com/bnelford/nowline/actions/workflows/ci.yml/badge.svg)](https://github.com/bnelford/nowline/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-**What's on now, what's next, and whether you'll make it there in time.**
+**Your conference schedule, live: what's on now, what's next, and whether you'll make the walk.**
 
-NowLine turns a conference's published schedule (Sched, pretalx, Sessionize, or any whole-event
-`.ics`) into a live, phone-first timeline. Every room is a lane, a red line marks the current time,
-and your own agenda is checked against the walk between rooms.
+### At the event
+
+Open one link on your phone. Every room is a lane, a red line marks the current time, and the strip at
+the top shows what's on now and what starts next. Star the sessions you want, and NowLine checks each
+connection against the walk between rooms. Scan the QR sign on any room door to see where you are and
+how to get to your next session.
+
+### Running the event
+
+There's nothing to install. NowLine reads the Sched, pretalx, Sessionize or `.ics` export you already
+publish, so your schedule tool stays the source of truth. Share one link with attendees and print a QR
+sign for each room. There are no accounts and no server to run.
 
 **[Try the live demo →](https://bnelford.github.io/nowline/)** The demo's data is generated around the
 current time, so it's always mid-conference. **▶ Tour** plays a 90-second walkthrough.
@@ -37,7 +46,11 @@ current time, so it's always mid-conference. **▶ Tour** plays a 90-second walk
   about overlaps and connections that are too tight: *"5 min between these, but it's an 8 min walk."*
 - **"I'm here" room signs.** Print a QR sign per room. Scanning one tells the phone where you are and
   gives directions and a leave-by time for your next stop.
-- **No account, no backend.** Static files. Stars and blocks stay in your browser.
+- **Stays current.** NowLine refreshes the feed while it's open, shows when it last updated
+  ("Updated 14:05"), and flags sessions that changed room.
+- **Works offline.** Install it to the home screen; the app and the last loaded schedule keep working
+  when the venue Wi-Fi doesn't.
+- **No account, no backend.** Static files. Stars and blocks stay in your browser. See [PRIVACY.md](PRIVACY.md).
 
 It's not a CFP, ticketing, or schedule-authoring tool. Sessionize, pretalx, Sched and the rest stay the
 source of truth; NowLine reads what they already publish.
@@ -59,17 +72,31 @@ because schedule sites don't send CORS headers. A public one for Sched, Sessioni
 default; deploy your own for anything else (for example a self-hosted pretalx).
 
 **Share it.** Once a schedule is loaded from its link, **Share…** gives you a link that opens the same
-schedule on anyone's phone. Post it in the event's chat.
+schedule on anyone's phone. Post it in the event's chat. Shared links open in attendee mode, which hides
+the organizer tools; add `?admin` to the page link to get them back.
+
+**Add your venue.** A schedule export knows rooms but not buildings. Add `&venue=<url of a venue.json>`
+to the shared link to supply buildings, walk times and routes. See [docs/importing.md](docs/importing.md).
+
+**Embed it.** Add `?embed=1` to the page link for a version meant to sit in an iframe on the event's website.
+
+Platform notes, with the exact export URLs: [Sched](docs/platforms/sched.md),
+[pretalx](docs/platforms/pretalx.md), [Sessionize](docs/platforms/sessionize.md).
+
+**For organizers:** a printable one-page overview is in [organizers.html](organizers.html), and
+[docs/self-host.md](docs/self-host.md) covers running your own copy with your event's branding.
 
 ## Run it for your event
 
 1. **Host it.** Fork the repo, then in *Settings → Pages* set *Source* to **GitHub Actions**. The
    [Pages workflow](.github/workflows/pages.yml) tests and publishes the site to
    `https://<you>.github.io/<repo>/` on every push to `main`. Any other static host works too:
-   `node scripts/site.js` copies the site into `_site/`, and all paths are relative.
+   `node scripts/site.js` copies the site into `_site/`, and all paths are relative. To set your
+   event's name, colours and default feed, add a `nowline.config.json`; see [docs/self-host.md](docs/self-host.md).
 2. **Deploy your own relay** (optional; the public one covers Sched, Sessionize and pretalx.com): `npx wrangler deploy`. See [docs/relay.md](docs/relay.md).
-3. **Load the schedule from its feed link and print room signs.** Signs made from a feed-loaded schedule
-   work on any phone, including one that has never opened NowLine. See [docs/room-signs.md](docs/room-signs.md).
+3. **Load the schedule from its feed link and print room signs.** **Print all** prints every room's sign
+   in one go. Signs made from a feed-loaded schedule work on any phone, including one that has never
+   opened NowLine. See [docs/room-signs.md](docs/room-signs.md).
 
 ## Docs
 
@@ -77,6 +104,10 @@ schedule on anyone's phone. Post it in the event's chat.
 - [Your agenda](docs/agenda.md): stars, blocks, calendar import, and conflict checks
 - [Room signs](docs/room-signs.md): QR links, feed links, and printing
 - [Feed relay](docs/relay.md): what it allows, its limits, and deploying it
+- [Self-hosting](docs/self-host.md): your own copy, `nowline.config.json` and branding
+- Platforms: [Sched](docs/platforms/sched.md), [pretalx](docs/platforms/pretalx.md), [Sessionize](docs/platforms/sessionize.md)
+- [For organizers](organizers.html): a printable one-pager
+- [Privacy](PRIVACY.md), [Accessibility](ACCESSIBILITY.md), [Changelog](CHANGELOG.md), [Press kit](docs/press.md)
 
 ## Development
 
