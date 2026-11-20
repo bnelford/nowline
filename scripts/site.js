@@ -9,7 +9,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-export const SITE_FILES = ['index.html', 'manifest.webmanifest', 'sw.js', 'src', 'vendor', 'assets'];
+export const SITE_FILES = ['index.html', 'organizers.html', 'docs', 'manifest.webmanifest', 'sw.js', 'src', 'vendor', 'assets'];
 
 // Hash of every file under `dir` (paths and contents, in a stable order). Run it before stamping sw.js.
 export function contentHash(dir) {

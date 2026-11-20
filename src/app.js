@@ -941,7 +941,7 @@ function renderFresh(){
   el.classList.toggle('off',!FRESH);
 }
 async function refreshFeed({force}={}){
-  const src=data.source; if(!src?.feed||refreshing) return;
+  const src=data.source; if(!src?.feed||src.shifted||refreshing) return;   // a shifted replay would snap back to real dates
   if(navigator.onLine===false){ FRESH=false; renderFresh(); return; }
   if(!force&&Date.now()-(src.fetchedAt||0)<5*MIN) return;
   refreshing=true; const ac=new AbortController(), to=setTimeout(()=>ac.abort(),15000);
@@ -993,7 +993,7 @@ function openImport(){
     try{
       let d=parseAny($('imp').value);
       if(fetched&&fetched.text===$('imp').value) d.source={feed:fetched.feed,relay:fetched.relay,fetchedAt:Date.now()};
-      if($('rebase').checked){ const ev=resolveZones(d,loadZoneSettings(store,d.source?.feed||d.name,d.name),deviceZone()).event; d=rebaseToToday(rezone(d,ev),ev); }
+      if($('rebase').checked){ const ev=resolveZones(d,loadZoneSettings(store,d.source?.feed||d.name,d.name),deviceZone()).event; d=rebaseToToday(rezone(d,ev),ev); if(d.source) d.source.shifted=true; }
       data=d; saveData(d); S.hidden.clear(); store.set('hidden',[]); FRESH=true; boot(); closeSheet();
     }catch(e){$('impErr').textContent='Could not read that: '+e.message;}
   };
