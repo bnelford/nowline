@@ -71,7 +71,7 @@ export function demoData(){
       const s = {id:'d'+(id++), title:titles[i%titles.length], start:t, end:t+dur, venue:v.id,
         track: v.building==='annex'?'Workshop':(v.id==='hall'?'Community':(v.id==='spon'?'Partner':'Talk')),
         speakers: v.id==='hall'?[]:[SPK[Math.floor(r()*SPK.length)]].concat(r()<.3?[SPK[Math.floor(r()*SPK.length)]]:[]),
-        desc:'Sample session for the NowLine demo. Load a real schedule with “Load schedule…”.'};
+        desc:'Sample session for the RoomHop demo. Load a real schedule with “Load schedule…”.'};
       sessions.push(s); i++;
       t += dur + (v.id==='key' ? 90*MIN : (r()<.6?15:30)*MIN);
     }

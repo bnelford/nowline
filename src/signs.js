@@ -12,28 +12,30 @@ export function shareLink(base,src){
       const u=new URL(base); PARAMS.forEach(k=>u.searchParams.delete(k));
       u.searchParams.set('feed',src.feed); if(isHttps(src.relay)) u.searchParams.set('relay',src.relay);
       if(isZone(src.tz)) u.searchParams.set('tz',src.tz);
+      if(isHttps(src.venue)) u.searchParams.set('venue',src.venue);
       base=u.toString();
     }catch(e){}
   }
   return base;
 }
 export const roomLink=(base,v,src)=>shareLink(base,src)+'#'+roomSlug(v);
-// What a sign link asks for: {room:'here-…'|null, feed, relay, tz}. Non-https feed/relay values are ignored,
-// and relay/tz only count alongside a feed.
+// What a sign link asks for: {room:'here-…'|null, feed, relay, tz, venue}. Non-https feed/relay/venue values
+// are ignored, and relay/tz/venue only count alongside a feed (venue = a venue.json overlay, see docs/importing.md).
 export function parseSignLink(href){
-  let u; try{u=new URL(href);}catch(e){return {room:null,feed:null,relay:null,tz:null};}
+  let u; try{u=new URL(href);}catch(e){return {room:null,feed:null,relay:null,tz:null,venue:null};}
   let h=u.hash.slice(1); try{h=decodeURIComponent(h);}catch(e){}
-  const feed=u.searchParams.get('feed'), relay=u.searchParams.get('relay'), tz=u.searchParams.get('tz');
-  return {room:h.startsWith('here-')?h:null, feed:isHttps(feed)?feed:null, relay:isHttps(feed)&&isHttps(relay)?relay:null, tz:isHttps(feed)&&isZone(tz)?tz:null};
+  const feed=u.searchParams.get('feed'), relay=u.searchParams.get('relay'), tz=u.searchParams.get('tz'), venue=u.searchParams.get('venue');
+  return {room:h.startsWith('here-')?h:null, feed:isHttps(feed)?feed:null, relay:isHttps(feed)&&isHttps(relay)?relay:null, tz:isHttps(feed)&&isZone(tz)?tz:null,
+    venue:isHttps(feed)&&isHttps(venue)?venue:null};
 }
-// the same link without feed/relay/tz, so a reload doesn't re-import after the attendee loads something else
+// the same link without feed/relay/tz/venue, so a reload doesn't re-import after the attendee loads something else
 export function withoutFeed(href){
   try{
     const u=new URL(href); if(!PARAMS.some(k=>u.searchParams.has(k))) return href;
     PARAMS.forEach(k=>u.searchParams.delete(k)); return u.toString();
   }catch(e){return href;}
 }
-const PARAMS=['feed','relay','tz'];
+const PARAMS=['feed','relay','tz','venue'];
 const isHttps=s=>typeof s==='string'&&/^https:\/\/[^\s]+$/i.test(s);
 // IANA-shaped names only ("Europe/Brussels", "UTC", "America/Argentina/Buenos_Aires"); the app also checks Intl knows it
 const isZone=s=>typeof s==='string'&&s.length<=64&&/^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+)*$/.test(s);

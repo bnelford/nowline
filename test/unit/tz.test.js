@@ -34,9 +34,16 @@ describe('event zone from each importer', () => {
     const ics = 'BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:a\nSUMMARY:Talk\nDTSTART:20261112T100000\nDTEND:20261112T110000\nEND:VEVENT\nEND:VCALENDAR';
     expect(scheduleFromICS(ics)).toMatchObject({ tz: null, floating: 'UTC' });
   });
-  it('.ics: an unknown (Windows) TZID is not taken as the event zone', () => {
-    const ics = 'BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:a\nSUMMARY:Talk\nDTSTART;TZID=Pacific Standard Time:20261112T100000\nDTEND;TZID=Pacific Standard Time:20261112T110000\nEND:VEVENT\nEND:VCALENDAR';
+  it('.ics: an unknown TZID is not taken as the event zone', () => {
+    const ics = 'BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:a\nSUMMARY:Talk\nDTSTART;TZID=Nowhere Standard Time:20261112T100000\nDTEND;TZID=Nowhere Standard Time:20261112T110000\nEND:VEVENT\nEND:VCALENDAR';
     expect(scheduleFromICS(ics)).toMatchObject({ tz: null, floating: 'UTC' });
+  });
+  it('.ics: a Windows TZID is mapped and becomes the event zone', () => {
+    const ics = 'BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:a\nSUMMARY:Talk\nDTSTART;TZID=Pacific Standard Time:20261112T100000\nDTEND;TZID=Pacific Standard Time:20261112T110000\nEND:VEVENT\nEND:VCALENDAR';
+    const d = scheduleFromICS(ics);
+    expect(d).toMatchObject({ tz: 'America/Los_Angeles' });
+    expect(d.floating).toBeUndefined();
+    expect(d.sessions[0].start).toBe(utc(2026, 10, 12, 18, 0));
   });
   it('pretalx: conference.time_zone_name', () => {
     const d = normalize(load('pretalx-schedule.json'));
@@ -235,11 +242,51 @@ describe('sign links: optional tz=', () => {
     expect(new URL(roomLink('https://x.org/', { id: 'a' }, { feed })).searchParams.has('tz')).toBe(false);
     const link = roomLink('https://x.org/?tz=Old/Zone', { id: 'a' }, { feed, tz: 'Europe/Brussels' });
     expect(new URL(link).searchParams.getAll('tz')).toEqual(['Europe/Brussels']);
-    expect(parseSignLink(link)).toEqual({ room: 'here-a', feed, relay: null, tz: 'Europe/Brussels' });
+    expect(parseSignLink(link)).toEqual({ room: 'here-a', feed, relay: null, tz: 'Europe/Brussels', venue: null });
   });
   it('ignores tz without a feed or when malformed, and strips it with the feed', () => {
     expect(parseSignLink('https://x.org/?tz=Europe/Brussels#here-a').tz).toBeNull();
     expect(parseSignLink('https://x.org/?feed=' + encodeURIComponent(feed) + '&tz=%3Cscript%3E#here-a').tz).toBeNull();
-    expect(withoutFeed('https://x.org/nowline/?feed=' + encodeURIComponent(feed) + '&tz=Asia/Tokyo#here-a')).toBe('https://x.org/nowline/#here-a');
+    expect(withoutFeed('https://x.org/roomhop/?feed=' + encodeURIComponent(feed) + '&tz=Asia/Tokyo#here-a')).toBe('https://x.org/roomhop/#here-a');
+  });
+});
+
+describe('rezone moves only times marked floating', () => {
+  it('leaves sessions with real offsets alone in a mixed schedule', () => {
+    const d = normalize({ sessions: [
+      { title: 'Float', start: '2026-11-12T09:00:00', end: '2026-11-12T10:00:00', venue: 'A' },
+      { title: 'Fixed', start: '2026-11-12T09:00:00Z', end: '2026-11-12T10:00:00Z', venue: 'A' },
+    ] });
+    rezone(d, 'Europe/Brussels');
+    expect(d.sessions[0].start).toBe(utc(2026, 10, 12, 8, 0));
+    expect(d.sessions[1].start).toBe(utc(2026, 10, 12, 9, 0));
+  });
+  it('.ics: a floating event moves, a UTC one does not', () => {
+    const ics = 'BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:f\nSUMMARY:Float\nDTSTART:20261112T090000\nDTEND:20261112T100000\nEND:VEVENT\n' +
+      'BEGIN:VEVENT\nUID:z\nSUMMARY:Utc\nDTSTART:20261112T090000Z\nDTEND:20261112T100000Z\nEND:VEVENT\nEND:VCALENDAR';
+    const d = rezone(scheduleFromICS(ics), 'Asia/Tokyo');
+    expect(d.sessions.find((s) => s.id === 'f').start).toBe(utc(2026, 10, 12, 0, 0));
+    expect(d.sessions.find((s) => s.id === 'z').start).toBe(utc(2026, 10, 12, 9, 0));
+  });
+  it('saves from before the marks: every session moves, as before', () => {
+    const d = { floating: 'UTC', sessions: [{ start: utc(2026, 10, 12, 9, 0), end: utc(2026, 10, 12, 10, 0) }] };
+    rezone(d, 'Europe/Brussels');
+    expect(d.sessions[0].start).toBe(utc(2026, 10, 12, 8, 0));
+  });
+});
+
+describe('zone settings keyed by feed, falling back to the event name', () => {
+  it('reads the new key, else the old one', () => {
+    const st = memStore();
+    st.set('tz:Imported schedule', { event: 'Asia/Tokyo', display: 'event' });
+    expect(loadZoneSettings(st, 'https://a/feed', 'Imported schedule').event).toBe('Asia/Tokyo');
+    saveZoneSettings(st, 'https://a/feed', { event: 'Europe/Brussels', display: 'event' }, 'Imported schedule');
+    expect(loadZoneSettings(st, 'https://a/feed', 'Imported schedule').event).toBe('Europe/Brussels');
+  });
+  it('resetting to defaults under the new key does not fall back to the old one', () => {
+    const st = memStore();
+    st.set('tz:Imported schedule', { event: 'Asia/Tokyo', display: 'event' });
+    saveZoneSettings(st, 'https://a/feed', { event: null, display: 'event' }, 'Imported schedule');
+    expect(loadZoneSettings(st, 'https://a/feed', 'Imported schedule')).toEqual({ event: null, display: 'event' });
   });
 });

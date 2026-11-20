@@ -1,6 +1,6 @@
 # Third-party material
 
-NowLine's own code is Apache-2.0 (see [LICENSE](LICENSE)). The items below keep their original
+RoomHop's own code is Apache-2.0 (see [LICENSE](LICENSE)). The items below keep their original
 licenses and are **not** re-licensed.
 
 ## QR Code Generator for JavaScript (`vendor/qrcode.js`)
@@ -14,7 +14,7 @@ licenses and are **not** re-licensed.
 > The word "QR Code" is registered trademark of DENSO WAVE INCORPORATED
 > <http://www.denso-wave.com/qrcode/faqpatent-e.html>
 
-NowLine uses the library unmodified to draw room-sign QR codes.
+RoomHop uses the library unmodified to draw room-sign QR codes.
 
 ```
 MIT License
@@ -46,6 +46,6 @@ SOFTWARE.
   **Kokoro-82M** by hexgrad, voice **`af_heart`**.
 - Model: <https://huggingface.co/hexgrad/Kokoro-82M>, licensed Apache-2.0
   (<https://www.apache.org/licenses/LICENSE-2.0>).
-- No model weights or Kokoro code are distributed with NowLine, only the generated audio.
+- No model weights or Kokoro code are distributed with RoomHop, only the generated audio.
   The clips are 24 kHz mono MP3s; if a clip is missing or can't play, the tour falls back to the
   browser's built-in speech synthesis.

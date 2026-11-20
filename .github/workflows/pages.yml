@@ -1,6 +1,6 @@
 name: Deploy to GitHub Pages
 
-# Publishes the static app (index.html, src/, vendor/, assets/) to https://bnelford.github.io/nowline/,
+# Publishes the static app (index.html, src/, vendor/, assets/) to https://bnelford.github.io/roomhop/,
 # plus coverage and test-count badge endpoints (coverage-badge.json, tests-badge.json; scripts/badges.js).
 # Pages must be enabled in the repo settings with "Source: GitHub Actions" for the deploy job to run.
 on:

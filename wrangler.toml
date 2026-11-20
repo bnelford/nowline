@@ -1,8 +1,8 @@
-# Cloudflare Worker config for the optional feed relay (nowline-feed-relay.js).
+# Cloudflare Worker config for the optional feed relay (roomhop-relay.js).
 # Deploy with:  npx wrangler deploy
 # The app itself is static files and does not use this.
-name = "nowline-relay"
-main = "nowline-feed-relay.js"
+name = "nowline-relay"   # the live public relay (DEFAULT_RELAY in src/app.js); renamed when it moves to its own domain
+main = "roomhop-relay.js"
 compatibility_date = "2026-11-01"
 
 [vars]

@@ -1,9 +1,10 @@
 /* ============================================================
-   NowLine — the UI. No build step, no backend. Pure logic lives in
+   RoomHop — the UI. No build step, no backend. Pure logic lives in
    sibling modules (schedule.js, ics.js, agenda.js, signs.js, stars.js);
    see schedule.js for the normalized data shape.
    ============================================================ */
-import { MIN, HOUR, normalize, rebaseToToday } from './schedule.js';
+import { MIN, HOUR, normalize, rebaseToToday, diffSessions, applyVenue } from './schedule.js';
+import { sanitizeConfig } from './config.js';
 import { parseICS, scheduleFromICS } from './ics.js';
 import { walkBetween as walkBetweenIn, agendaIssues as agendaIssuesIn } from './agenda.js';
 import { DEFAULT_SIGN_TEXT, roomSlug, roomLink, shareLink, defaultSignBase, signBaseFrom, parseSignLink, withoutFeed } from './signs.js';
@@ -14,9 +15,9 @@ import { deviceZone, validZone, zoneList, searchZones, zonedToUtc, dayKey as day
 import { SAMPLE_SIMPLE } from './samples.js';
 
 const store = {
-  get(k,d){try{const v=localStorage.getItem('nowline:'+k);return v?JSON.parse(v):d}catch(e){return d}},
-  set(k,v){try{localStorage.setItem('nowline:'+k,JSON.stringify(v))}catch(e){}},
-  del(k){try{localStorage.removeItem('nowline:'+k)}catch(e){}}
+  get(k,d){try{const v=localStorage.getItem('roomhop:'+k);return v?JSON.parse(v):d}catch(e){return d}},
+  set(k,v){try{localStorage.setItem('roomhop:'+k,JSON.stringify(v));return true}catch(e){return false}},   // false: not saved (e.g. quota)
+  del(k){try{localStorage.removeItem('roomhop:'+k)}catch(e){}}
 };
 // Kokoro-82M voiceover clips, one per TOUR step (see THIRD_PARTY.md); missing clips fall back to speechSynthesis
 // Public feed relay used when the Relay URL field is empty ('' = none; see docs/relay.md)
@@ -36,13 +37,17 @@ const S = {
 // Z.display only decides how they're shown and how typed-in times (blocks) are read.
 let ZS={event:null,display:'event'}, Z={event:deviceZone(),display:deviceZone(),fromFeed:false};
 function loadZones(){
-  ZS=loadZoneSettings(store,data.name); Z=resolveZones(data,ZS,deviceZone());
+  ZS=loadZoneSettings(store,evKey(),data.name); Z=resolveZones(data,ZS,deviceZone()); MEMO={};
   data=rezone(data,Z.event);   // floating times (no offset in the feed) follow the event's zone
 }
+// per-event settings are keyed by the feed link when there is one (every Sessionize import is "Imported
+// schedule"), else the name; evGet falls back to the name key older saves used
+const evKey=()=>data.source?.feed||data.name;
+const evGet=(p,d)=>{const v=store.get(p+evKey());return v!==undefined?v:store.get(p+data.name,d);};
 // demo data is regenerated around today, so demo blocks are kept per day
-const blockKey=()=>'blocks:'+data.name+(data.name.startsWith('Demo')?':'+new Date().toDateString():'');
+const blockKey=()=>'blocks:'+evKey()+(data.name.startsWith('Demo')?':'+new Date().toDateString():'');
 const saveBlocks=()=>store.set(blockKey(),S.blocks);
-const saveStars=()=>store.set(starsKey(data.name),[...S.stars]);
+const saveStars=()=>store.set(starsKey(evKey()),[...S.stars]);
 
 /* ---------- personal agenda: blocks + starred sessions, and walk-time conflicts ---------- */
 const walkBetween=(a,b)=>walkBetweenIn(data,a,b);
@@ -79,12 +84,15 @@ function inRange(venueId){
   if(S.radius==='same') return venueById(venueId).building===venueById(S.here).building;
   return walkMin(venueId) <= Number(S.radius);
 }
-function allDays(){ return [...new Set(data.sessions.map(s=>dayKey(s.start)))].sort(); }
+// memoized per data + display zone (+ day); loadZones clears it because rezone moves times in place
+let MEMO={};
+function allDays(){ if(MEMO.d!==data||MEMO.z!==Z.display) MEMO={d:data,z:Z.display,days:[...new Set(data.sessions.map(s=>dayKey(s.start)))].sort()}; return MEMO.days; }
 function multiDay(){ return allDays().length>1; }
 function daySessions(){
   if(!multiDay()||!S.day) return data.sessions;
+  if(MEMO.day===S.day) return MEMO.ds;
   const a=dayStart(S.day,Z.display), b=dayStart(nextDayKey(S.day),Z.display);   // 23 or 25 h on DST days
-  return data.sessions.filter(s=>s.start<b&&s.end>a);
+  MEMO.day=S.day; return MEMO.ds=data.sessions.filter(s=>s.start<b&&s.end>a);
 }
 function visibleVenues(){
   const ds=daySessions(), used=multiDay()?new Set(ds.map(s=>s.venue)):null;
@@ -95,11 +103,38 @@ function pickDay(auto){
   if(auto||!S.day||!days.includes(S.day)) S.day=days.includes(today)?today:(days.find(d=>d>today)||days[days.length-1]);
 }
 function span(){
-  const ds=daySessions().length?daySessions():data.sessions;
-  const st=Math.min(...ds.map(s=>s.start)), en=Math.max(...ds.map(s=>s.end));
-  return {start:floorHour(st,Z.display), end:floorHour(en,Z.display)+HOUR};
+  const dd=daySessions(), ds=dd.length?dd:data.sessions;
+  let st=Math.min(...ds.map(s=>s.start)), en=Math.max(...ds.map(s=>s.end)), b=Infinity;
+  // clamp to the selected day, so one multi-day session doesn't stretch every day
+  if(dd.length&&multiDay()&&S.day){ b=dayStart(nextDayKey(S.day),Z.display); st=Math.max(st,dayStart(S.day,Z.display)); en=Math.min(en,b); }
+  return {start:floorHour(st,Z.display), end:Math.min(floorHour(en,Z.display)+HOUR,b)};
 }
 function relLabel(ms){const m=Math.round(ms/MIN); if(m<60) return m+' min'; return Math.floor(m/60)+'h '+(m%60? (m%60)+'m':'')}
+// a time on another day than "now" gets its weekday ("Sat 9:00 AM"), so multi-day schedules read unambiguously
+const fmtW=t=>(dayKey(t)!==dayKey(now())?new Intl.DateTimeFormat([],{weekday:'short',timeZone:Z.display}).format(new Date(t))+' ':'')+fmt(t);
+const RB='role="button" tabindex="0"';   // keyboard-activatable (Enter/Space, see the keydown handler)
+// re-rendering a container drops keyboard focus: put it back on the same item, found by its data key
+function keepFocus(el,render){
+  const a=document.activeElement, k=a&&a!==el&&el.contains(a)&&['data-id','data-block','data-room','data-maproom','data-venue'].find(x=>a.hasAttribute(x)), v=k&&a.getAttribute(k);
+  render();
+  if(k&&!el.contains(document.activeElement)){const n=el.querySelector(`[${k}="${CSS.escape(v)}"]`);if(n)n.focus({preventScroll:true});}
+}
+// an aria-live region: only re-render (and so re-announce) when its text changes. Ticking bits are marked .tk
+// (aria-hidden) and updated in place, so a counter going from 12 to 11 min isn't read out every few seconds.
+function patchLive(el,h){
+  const tp=document.createElement('div'); tp.innerHTML=h;
+  const said=n=>{const c=n.cloneNode(true);c.querySelectorAll('.tk').forEach(x=>x.remove());return c.innerHTML;};
+  if(said(tp)!==said(el)){keepFocus(el,()=>el.innerHTML=h);return;}
+  const a=el.querySelectorAll('.tk'); tp.querySelectorAll('.tk').forEach((n,i)=>{if(a[i]&&!a[i].isEqualNode(n)) a[i].replaceWith(n);});
+}
+// a block that starts off-screen under the sticky room label keeps its title readable at the visible left edge
+function pinTitles(){
+  const sl=$('tl').scrollLeft;
+  document.querySelectorAll('#inner .s,#inner .b').forEach(el=>{
+    const l=parseFloat(el.style.left), w=el.offsetWidth, pin=sl>l&&sl<l+w?Math.min(sl-l,Math.max(0,w-40)):0;
+    if(pin) el.style.setProperty('--pin',pin+'px'); else if(el.style.getPropertyValue('--pin')) el.style.removeProperty('--pin');
+  });
+}
 
 /* ---------- render timeline (structure) ---------- */
 let SP, X;  // span + x() mapper
@@ -115,27 +150,27 @@ function renderTimeline(){
   }
   h+=`</div></div>`;
   h+=renderMeLane(W);
-  const vs=visibleVenues();
+  const vs=visibleVenues(), ds=daySessions();
   for(const v of vs){
     const far=!inRange(v.id); const w=walkMin(v.id);
     const b=data.buildings[v.building]||{};
     h+=`<div class="lane${far?' far':''}" style="--c:${v.color}"><div class="lab" data-venue="${esc(v.id)}"><b>${esc(v.where&&v.name.includes('('+v.where+')')?v.name.replace('('+v.where+')','').trim():v.name)}</b><small>${esc(b.name||'')}${w!=null&&S.here!==v.id?' · '+w+' min':''}${S.here===v.id?' · you':''}</small></div>`;
     h+=`<div class="track" data-venue="${esc(v.id)}" style="width:${W}px;background-size:${30*S.ppm}px 100%">`;
-    for(const s of daySessions().filter(s=>s.venue===v.id && (!S.starOnly||S.stars.has(s.id)))){
+    for(const s of ds.filter(s=>s.venue===v.id && (!S.starOnly||S.stars.has(s.id)))){
       const l=X(s.start), wd=Math.max(X(s.end)-l-3,8);
-      h+=`<div class="s${S.stars.has(s.id)?' star':''}" data-id="${esc(s.id)}" data-st="${s.start}" data-en="${s.end}" style="left:${l}px;width:${wd}px;--c:${v.color}"><div class="prog"></div><div class="t">${esc(s.title)}</div><div class="m">${fmt(s.start)}–${fmt(s.end)}${s.speakers.length?' · '+esc(s.speakers.join(', ')):''}</div></div>`;
+      h+=`<div class="s${S.stars.has(s.id)?' star':''}" ${RB} data-id="${esc(s.id)}" data-st="${s.start}" data-en="${s.end}" style="left:${l}px;width:${wd}px;--c:${v.color}"><div class="prog"></div><div class="t">${esc(s.title)}</div><div class="m">${fmt(s.start)}–${fmt(s.end)}${s.speakers.length?' · '+esc(s.speakers.join(', ')):''}</div></div>`;
     }
     // your own blocks anchored in/next to this room show as a striped band along the bottom
     for(const b of S.blocks.filter(b=>b.venue===v.id)){
       const l=X(b.start), wd=Math.max(X(b.end)-l-3,8);
-      h+=`<div class="pb" data-block="${esc(b.id)}" style="left:${l}px;width:${wd}px">👤 ${esc(b.title)}${b.place?' · '+esc(b.place):''}</div>`;
+      h+=`<div class="pb" ${RB} data-block="${esc(b.id)}" style="left:${l}px;width:${wd}px">👤 ${esc(b.title)}${b.place?' · '+esc(b.place):''}</div>`;
     }
     h+=`</div></div>`;
   }
   if(!vs.length) h+=`<div class="empty" style="padding:20px">No rooms to show. ${S.starOnly?'Star some sessions first, or turn off “★ Mine”.':'Check “Rooms…”.'}</div>`;
   h+=`<div class="pastshade" id="shade" style="left:${lw}px"></div><div class="nowline" id="nowline"><div class="tag" id="nowtag"></div><div class="dot"></div></div>`;
-  inner.innerHTML=h;
-  tick(true);
+  keepFocus(inner,()=>inner.innerHTML=h);
+  tick(true); pinTitles();
 }
 
 function renderMeLane(W){
@@ -143,15 +178,15 @@ function renderMeLane(W){
   const rows=[]; items.forEach(it=>{let r=rows.findIndex(end=>end<=it.start); if(r<0){r=rows.length;rows.push(0);} rows[r]=it.end; it.row=Math.min(r,2);});
   const n=Math.max(1,Math.min(rows.length,3)), rowH=n===1?50:(n===2?34:28), laneH=n*rowH+14;
   const issues=agendaIssues(items), bad=issues.filter(c=>c.type==='overlap'||c.bad).length;
-  let h=`<div class="lane me" style="height:${laneH}px"><div class="lab" id="meLab"><b>★ Me</b><small>${items.length?items.length+' item'+(items.length>1?'s':''):'tap a slot →'}${bad?' · ⚠ '+bad:''}</small></div>`;
+  let h=`<div class="lane me" style="height:${laneH}px"><div class="lab" id="meLab" ${RB} aria-label="My agenda"><b>★ Me</b><small>${items.length?items.length+' item'+(items.length>1?'s':''):'tap a slot →'}${bad?' · ⚠ '+bad:''}</small></div>`;
   h+=`<div class="track" data-venue="${esc(S.here||'')}" data-me="1" style="width:${W}px;background-size:${30*S.ppm}px 100%">`;
   for(const it of items){
     const l=X(it.start), wd=Math.max(X(it.end)-l-3,8), top=5+it.row*rowH, ht=rowH-4;
     if(it.kind==='block'){
-      h+=`<div class="b" data-block="${esc(it.id)}" data-st="${it.start}" data-en="${it.end}" style="left:${l}px;width:${wd}px;top:${top}px;height:${ht}px"><div class="prog"></div><div class="t">👤 ${esc(it.title)}</div>${n<3?`<div class="m">${fmt(it.start)}–${fmt(it.end)} · ${esc(placeLabel(it))}</div>`:''}</div>`;
+      h+=`<div class="b" ${RB} data-block="${esc(it.id)}" data-st="${it.start}" data-en="${it.end}" style="left:${l}px;width:${wd}px;top:${top}px;height:${ht}px"><div class="prog"></div><div class="t">👤 ${esc(it.title)}</div>${n<3?`<div class="m">${fmt(it.start)}–${fmt(it.end)} · ${esc(placeLabel(it))}</div>`:''}</div>`;
     } else {
       const v=venueById(it.venue);
-      h+=`<div class="s" data-id="${esc(it.id)}" data-st="${it.start}" data-en="${it.end}" style="left:${l}px;width:${wd}px;top:${top}px;height:${ht}px;bottom:auto;--c:${v.color}"><div class="prog"></div><div class="t" style="-webkit-line-clamp:1">${esc(it.title)}</div>${n<3?`<div class="m">${esc(v.name)}</div>`:''}</div>`;
+      h+=`<div class="s" ${RB} data-id="${esc(it.id)}" data-st="${it.start}" data-en="${it.end}" style="left:${l}px;width:${wd}px;top:${top}px;height:${ht}px;bottom:auto;--c:${v.color}"><div class="prog"></div><div class="t" style="-webkit-line-clamp:1">${esc(it.title)}</div>${n<3?`<div class="m">${esc(v.name)}</div>`:''}</div>`;
     }
   }
   for(const c of issues){
@@ -203,45 +238,58 @@ function renderStrip(){
   const vis=new Set(visibleVenues().filter(v=>inRange(v.id)).map(v=>v.id));
   const pool=data.sessions.filter(s=>vis.has(s.venue) && (!S.starOnly||S.stars.has(s.id)));
   const live=pool.filter(s=>s.start<=t&&s.end>t).sort((a,b)=>(walkMin(a.venue)??0)-(walkMin(b.venue)??0));
-  const next=pool.filter(s=>s.start>t&&s.start-t<=45*MIN).sort((a,b)=>a.start-b.start);
+  // your next starred session, at any distance in time: pinned first, with the walk and a leave-by time
+  const yn=myAgenda().find(it=>it.kind==='session'&&it.start>t);
+  const next=pool.filter(s=>s.start>t&&s.start-t<=45*MIN&&!(yn&&s.id===yn.id)).sort((a,b)=>a.start-b.start);
   const card=(s,kind)=>{
     const v=venueById(s.venue), w=walkMin(s.venue);
     let k, extra='';
-    if(kind==='now'){ k=`<span><b>● Now</b></span><span>${relLabel(s.end-t)} left</span>`;
-      extra=`<div class="bar"><i style="width:${(t-s.start)/(s.end-s.start)*100}%"></i></div>`; }
-    else { const inMin=Math.round((s.start-t)/MIN); k=`<span>Next · in ${inMin} min</span><span>${fmt(s.start)}</span>`;
-      if(w!=null && S.here!==s.venue){ const leave=inMin-w; extra=`<div class="go">${leave<=0?'🏃 Leave now ('+w+' min walk)':'Leave in '+leave+' min · '+w+' min walk'}</div>`; } }
-    return `<div class="card" data-id="${esc(s.id)}" style="--c:${v.color}"><div class="k">${k}</div><div class="t">${S.stars.has(s.id)?'★ ':''}${esc(s.title)}</div><div class="m">${esc(v.name)}${w!=null&&S.here!==s.venue?' · '+w+' min away':''}</div>${extra}</div>`;
+    if(kind==='now'){ k=`<span><b>● Now</b><span class="sr"> until ${fmt(s.end)}</span></span><span class="tk" aria-hidden="true">${relLabel(s.end-t)} left</span>`;
+      extra=`<div class="bar tk" aria-hidden="true"><i style="width:${(t-s.start)/(s.end-s.start)*100}%"></i></div>`; }
+    else { const inMin=Math.round((s.start-t)/MIN); k=`<span>Next<span class="tk" aria-hidden="true"> · in ${inMin} min</span></span><span>${fmtW(s.start)}</span>`;
+      if(w!=null && S.here!==s.venue){ const leave=inMin-w; extra=`<div class="go">${leave<=0?'🏃 Leave now ('+w+' min walk)':w+' min walk · leave by '+fmtW(s.start-w*MIN)}</div>`; } }
+    return `<div class="card" ${RB} data-id="${esc(s.id)}" style="--c:${v.color}"><div class="k">${k}</div><div class="t">${S.stars.has(s.id)?'★ ':''}${esc(s.title)}</div><div class="m">${esc(v.name)}${w!=null&&S.here!==s.venue?' · '+w+' min away':''}</div>${extra}</div>`;
+  };
+  const ycard=s=>{
+    const v=venueById(s.venue), w=S.here&&S.here!==s.venue?walkMin(s.venue):null, leaveBy=w!=null?s.start-w*MIN:null, late=leaveBy!=null?Math.ceil((t-leaveBy)/MIN):0;
+    const go=w==null?(S.here?'':'Set “I\'m at” for a leave-by time'):late>0?`🏃 You'll be late: ${w} min walk<span class="tk" aria-hidden="true"> (${late} min late)</span>`:
+      leaveBy-t<MIN?`🏃 Leave now · ${w} min walk`:`${w} min walk · leave by ${fmtW(leaveBy)}`;
+    return `<div class="card yours" ${RB} data-id="${esc(s.id)}"><div class="k"><span>★ Your next${s.start-t<=2*HOUR?`<span class="tk" aria-hidden="true"> · in ${relLabel(s.start-t)}</span>`:''}</span><span>${fmtW(s.start)}</span></div><div class="t">${esc(s.title)}</div><div class="m">${esc(v.name)}${S.here===s.venue?' · you\'re here':''}</div>${go?`<div class="go">${go}</div>`:''}</div>`;
   };
   // your own blocks: now + next 90 min
   const bcard=b=>{
     const isNow=b.start<=t&&b.end>t, w=walkMin(b.venue), inMin=Math.round((b.start-t)/MIN);
-    let k=isNow?`<span><b>● Now</b> · yours</span><span>${relLabel(b.end-t)} left</span>`:`<span>Yours · in ${inMin} min</span><span>${fmt(b.start)}</span>`;
-    let extra=isNow?`<div class="bar"><i style="width:${(t-b.start)/(b.end-b.start)*100}%"></i></div>`:
-      (w!=null&&w>0?`<div class="go">${inMin-w<=0?'🏃 Leave now ('+w+' min walk)':'Leave in '+(inMin-w)+' min · '+w+' min walk'}</div>`:'');
-    return `<div class="card mine" data-block="${esc(b.id)}"><div class="k">${k}</div><div class="t">👤 ${esc(b.title)}</div><div class="m">${esc(placeLabel(b))}</div>${extra}</div>`;
+    let k=isNow?`<span><b>● Now</b> · yours<span class="sr"> until ${fmt(b.end)}</span></span><span class="tk" aria-hidden="true">${relLabel(b.end-t)} left</span>`:`<span>Yours<span class="tk" aria-hidden="true"> · in ${inMin} min</span></span><span>${fmtW(b.start)}</span>`;
+    let extra=isNow?`<div class="bar tk" aria-hidden="true"><i style="width:${(t-b.start)/(b.end-b.start)*100}%"></i></div>`:
+      (w!=null&&w>0?`<div class="go">${inMin-w<=0?'🏃 Leave now ('+w+' min walk)':w+' min walk · leave by '+fmtW(b.start-w*MIN)}</div>`:'');
+    return `<div class="card mine" ${RB} data-block="${esc(b.id)}"><div class="k">${k}</div><div class="t">👤 ${esc(b.title)}</div><div class="m">${esc(placeLabel(b))}</div>${extra}</div>`;
   };
   const myNow=S.blocks.filter(b=>b.end>t&&b.start-t<=90*MIN).sort((a,b)=>a.start-b.start);
   // upcoming conflicts in the next 4 hours go first: they're the actionable thing
   const warn=agendaIssues(myAgenda()).filter(c=>(c.type==='overlap'||c.bad)&&c.b.start>t-5*MIN&&c.at-t<4*HOUR).map(c=>{
     const ref=c.b.kind==='block'?`data-block="${esc(c.b.id)}"`:`data-id="${esc(c.b.id)}"`;
-    return `<div class="card warn" ${ref}><div class="k"><span>⚠ ${c.type==='overlap'?'Overlap':'Tight connection'}</span><span>${fmt(c.type==='overlap'?c.at:c.b.start)}</span></div><div class="m" style="color:#ffc7cc">${esc(issueText(c))}</div></div>`;
+    return `<div class="card warn" ${RB} ${ref}><div class="k"><span>⚠ ${c.type==='overlap'?'Overlap':'Tight connection'}</span><span>${fmt(c.type==='overlap'?c.at:c.b.start)}</span></div><div class="m" style="color:#ffc7cc">${esc(issueText(c))}</div></div>`;
   });
   let h=warn.join('')+myNow.filter(b=>b.start<=t).map(bcard).join('')+live.map(s=>card(s,'now')).join('')+myNow.filter(b=>b.start>t).map(bcard).join('')+next.map(s=>card(s,'next')).join('');
-  if(!h) h=`<div class="empty">${t>SP.end?'Schedule has ended — use −30m or “Load schedule…” to try another.':
-    t<SP.start?'Starts '+fmt(SP.start)+'.':'Nothing on right now'+(S.radius!=='all'&&S.here?' within your range':'')+'.'}</div>`;
-  $('strip').innerHTML=h;
+  // nothing left today but the event goes on: say when the next day starts rather than "ended"
+  const nd=!data.sessions.some(s=>s.start<=t&&s.end>t)&&data.sessions.filter(s=>s.start>t).sort((a,b)=>a.start-b.start)[0], days=allDays();
+  if(!h) h=`<div class="empty">${nd&&days.length>1&&dayKey(nd.start)!==dayKey(t)?`Day ${days.indexOf(dayKey(nd.start))+1} starts ${fmtW(nd.start)}.`:
+    t>SP.end?'Schedule has ended. Use −30m or “Load schedule…” under ⋯ More to try another.':
+    t<SP.start?'Starts '+fmtW(SP.start)+'.':'Nothing on right now'+(S.radius!=='all'&&S.here?' within your range':'')+'.'}</div>`;
+  if(yn) h=ycard(yn)+h;
+  patchLive($('strip'),h);
 }
 
 /* ---------- controls ---------- */
 function renderControls(){
-  $('confName').textContent=data.name;
+  $('confName').textContent=data.name; renderFresh();
   const hs=$('hereSel');
   hs.innerHTML=`<option value="">— anywhere —</option>`+data.venues.map(v=>`<option value="${esc(v.id)}">${esc(v.name)}</option>`).join('');
   hs.value=S.here||''; $('radiusSel').value=S.radius;
-  $('starBtn').classList.toggle('on',S.starOnly);
+  $('starBtn').classList.toggle('on',S.starOnly); $('starBtn').setAttribute('aria-pressed',S.starOnly);
   $('liveBtn').classList.toggle('on',S.speed===1 && Math.abs(now()-Date.now())<MIN);
   $('demoBtn').classList.toggle('on',S.speed>1);
+  $('backLive').hidden=$('liveBtn').classList.contains('on');   // "Live" lives under More; this pill shows only while time is shifted
   const days=allDays(); $('daySelWrap').style.display=days.length>1?'':'none';
   if(days.length>1){ $('daySel').innerHTML=days.map(d=>`<option value="${d}" ${d===S.day?'selected':''}>${new Date(d+'T12:00').toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'})}${d===dayKey(Date.now())?' · today':''}</option>`).join(''); }
 }
@@ -250,13 +298,15 @@ function renderAll(){renderControls();renderTimeline();if(VIEW==='map') renderMa
 
 let programmatic=false;
 const tlEl=$('tl');
-['touchstart','wheel','mousedown'].forEach(ev=>tlEl.addEventListener(ev,()=>{ if(S.follow){S.follow=false;tick();} },{passive:true}));
+tlEl.addEventListener('scroll',pinTitles,{passive:true});
+['touchstart','wheel','mousedown','focusin'].forEach(ev=>tlEl.addEventListener(ev,()=>{ if(S.follow){S.follow=false;tick();} },{passive:true}));
 $('followBtn').onclick=()=>{S.follow=true;tick();};
 $('liveBtn').onclick=()=>{S.follow=true;S.dayAuto=true;pickDay(true);setClock(Date.now(),1);};
+$('backLive').onclick=()=>$('liveBtn').click();
 $('demoBtn').onclick=()=>{S.follow=true; S.speed>1?setClock(now(),1):setClock(now(),60);};
 $('backBtn').onclick=()=>{S.follow=true;setClock(now()-30*MIN,S.speed);};
 $('fwdBtn').onclick=()=>{S.follow=true;setClock(now()+30*MIN,S.speed);};
-$('hereSel').onchange=e=>{S.here=e.target.value||null;store.set('here:'+data.name,S.here);renderAll();};
+$('hereSel').onchange=e=>{S.here=e.target.value||null;store.set('here:'+evKey(),S.here);renderAll();};
 $('radiusSel').onchange=e=>{S.radius=e.target.value;store.set('radius',S.radius);if(S.radius!=='all'&&!S.here){openHerePrompt();}renderAll();};
 $('starBtn').onclick=()=>{S.starOnly=!S.starOnly;renderAll();};
 $('zoomIn').onclick=()=>{S.ppm=Math.min(8,S.ppm+1);store.set('ppm',S.ppm);S.follow=true;renderTimeline();};
@@ -265,36 +315,79 @@ $('lanesBtn').onclick=openLanes;
 $('importBtn').onclick=openImport;
 $('tzBtn').onclick=openZones; $('tzLab').onclick=openZones;
 
+$('moreBtn').onclick=()=>showDlg($('moreSheet')); $('moreClose').onclick=()=>closeSheet();
 $('addBlockBtn').onclick=()=>{const t=Math.ceil(now()/(15*MIN))*15*MIN;openBlock(null,{start:t,venue:S.here});};
 document.addEventListener('click',e=>{
   if(e.target.closest('.sheet')) return;
   const bk=e.target.closest('[data-block]'); if(bk){openBlock(bk.dataset.block);return;}
   const s=e.target.closest('[data-id]'); if(s){openSession(s.dataset.id);return;}
-  // tap on an empty slot in a lane → new block in (or next to) that room, at that time
+  const add=e.target.closest('.addslot'); if(add){openBlock(null,{start:+add.dataset.at,venue:add.dataset.venue||S.here});return;}
+  document.querySelectorAll('.addslot').forEach(x=>x.remove());
+  // tap on an empty slot in a lane → a "+" for a new block in (or next to) that room at that time; a stray tap only shows the "+"
   if(e.target.classList.contains('track')){
     const r=e.target.getBoundingClientRect(), x=e.clientX-r.left;
     const t=Math.floor((SP.start+x/S.ppm*MIN)/(15*MIN))*15*MIN;
-    openBlock(null,{start:t,venue:e.target.dataset.venue||S.here});return;
+    e.target.insertAdjacentHTML('beforeend',`<button class="addslot" data-at="${t}" data-venue="${esc(e.target.dataset.venue||'')}" style="left:${Math.max(x,$('tl').scrollLeft+50)}px" aria-label="Block time at ${fmt(t)}">+ ${fmt(t)}</button>`);
+    setTimeout(()=>document.querySelectorAll(`.addslot[data-at="${t}"]`).forEach(x=>x.remove()),5000);return;
   }
   if(e.target.closest('#meLab')){openAgenda();return;}
-  const lab=e.target.closest('.lab[data-venue]'); if(lab){S.here=lab.dataset.venue;store.set('here:'+data.name,S.here);renderAll();}
+  const lab=e.target.closest('.lab[data-venue]'); if(lab){S.here=lab.dataset.venue;store.set('here:'+evKey(),S.here);renderAll();}
 });
 
 /* ---------- sheets ---------- */
-function openSheet(html){$('sheet').innerHTML='<div class="grab"></div>'+html;$('sheet').classList.add('show');$('scrim').classList.add('show');}
-function closeSheet(){$('sheet').classList.remove('show');$('scrim').classList.remove('show');}
+// Sheets are modal dialogs: focus moves in, Tab stays inside, Escape closes, focus returns to the opener.
+let opener=null;
+const FOCUSABLE='a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex="0"]';
+const shownSheet=()=>document.querySelector('.sheet.show');
+const KEYS=['id','data-id','data-block','data-room','data-maproom'];
+function showDlg(el,keep){
+  const cur=shownSheet();
+  if(!cur){ const a=document.activeElement, k=a&&KEYS.find(x=>a.hasAttribute(x)), box=a&&a.closest&&a.closest('#strip,#inner,#mapSvg,#mapList');
+    opener={el:a,k,v:k&&a.getAttribute(k),box:box&&box.id}; }
+  else if(cur!==el){ cur.classList.remove('show'); if(cur.id==='moreSheet') opener={el:$('moreBtn')}; }
+  el.classList.add('show'); $('scrim').classList.add('show');
+  if(el.id==='sheet'){ const h=el.querySelector('h2'); if(h){h.id='sheetTtl';el.setAttribute('aria-labelledby','sheetTtl');} else el.removeAttribute('aria-labelledby'); }
+  const k=keep&&el.querySelector('#'+CSS.escape(keep)); (k||el).focus({preventScroll:true});
+}
+function openSheet(html){const a=document.activeElement, keep=$('sheet').contains(a)&&a.id;$('sheet').innerHTML='<div class="grab"></div>'+html;showDlg($('sheet'),keep);}
+function closeSheet(){
+  const was=shownSheet(); document.querySelectorAll('.sheet.show').forEach(x=>x.classList.remove('show')); $('scrim').classList.remove('show');
+  const o=opener; opener=null; if(!was||!o) return;
+  let el=o.el&&$('moreSheet').contains(o.el)?$('moreBtn'):o.el;
+  if(el&&(!el.isConnected||!el.getClientRects().length)&&o.k){   // re-rendered while the sheet was open: find the same item
+    const root=(o.box&&$(o.box))||document; el=[...root.querySelectorAll(`[${o.k}="${CSS.escape(o.v)}"]`)].find(n=>n.getClientRects().length);
+  }
+  if(el&&el.focus&&el!==document.body&&el.isConnected) el.focus({preventScroll:true});
+}
 $('scrim').onclick=closeSheet;
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){ document.querySelectorAll('.addslot').forEach(x=>x.remove()); if(T.on){endTour();return;} if(shownSheet()){e.preventDefault();closeSheet();} return; }
+  const d=shownSheet();
+  if(e.key==='Tab'&&d&&!T.on){
+    const f=[...d.querySelectorAll(FOCUSABLE)].filter(n=>n.getClientRects().length), a=document.activeElement;
+    if(!f.length){e.preventDefault();d.focus();return;}
+    if(!d.contains(a)){e.preventDefault();f[0].focus();}
+    else if(e.shiftKey&&(a===f[0]||a===d)){e.preventDefault();f[f.length-1].focus();}
+    else if(!e.shiftKey&&a===f[f.length-1]){e.preventDefault();f[0].focus();}
+    return;
+  }
+  // role=button elements (cards, session blocks, chips, map rooms) activate with Enter and Space like real buttons
+  const t=e.target;
+  if((e.key==='Enter'||e.key===' ')&&t.getAttribute&&t.getAttribute('role')==='button'&&!/^(BUTTON|A)$/.test(t.tagName)){
+    e.preventDefault(); if(t.dataset.room) openRoom(t.dataset.room); else t.click();
+  }
+});
 
 function openSession(id){
   const s=data.sessions.find(z=>z.id===id); if(!s) return;
   const v=venueById(s.venue), b=data.buildings[v.building]||{}, t=now(), w=walkMin(s.venue);
-  const status = t>=s.end?'Ended':(t>=s.start?`Live · ${relLabel(s.end-t)} left`:`Starts in ${relLabel(s.start-t)}`);
+  const status = t>=s.end?'Ended':(t>=s.start?`Live · ${relLabel(s.end-t)} left`:s.start-t>2*HOUR?'':`Starts in ${relLabel(s.start-t)}`);
   // what else overlaps (the "what am I missing" view)
   const clash=data.sessions.filter(o=>o.id!==s.id&&o.start<s.end&&o.end>s.start).slice(0,8);
   openSheet(`
     <div><span class="pill c" style="--c:${v.color}">${esc(v.name)}</span><span class="pill">${esc(b.name||'')}</span>${s.track?`<span class="pill">${esc(s.track)}</span>`:''}</div>
     <h2>${esc(s.title)}</h2>
-    <div class="note">${fmt(s.start)}–${fmt(s.end)} · ${status}${w!=null&&S.here!==s.venue?` · ${w} min walk from you`:''}</div>
+    <div class="note">${fmtW(s.start)}–${fmt(s.end)}${status?' · '+status:''}${w!=null&&S.here!==s.venue?` · ${w} min walk from you`:''}</div>
     ${S.stars.has(s.id)?agendaIssues(myAgenda()).filter(c=>(c.type==='overlap'||c.bad)&&(c.a.id===s.id||c.b.id===s.id)).map(c=>`<div class="warnbox">⚠ ${esc(issueText(c))}</div>`).join(''):''}
     ${s.speakers.length?`<p><b>${esc(s.speakers.join(', '))}</b></p>`:''}
     ${s.desc?`<p style="white-space:pre-line">${esc(s.desc.length>900?s.desc.slice(0,900)+'…':s.desc)}</p>`:''}
@@ -304,10 +397,10 @@ function openSession(id){
       <button class="btn" id="goHere">I'm in this room</button>
       <button class="btn" id="closeS">Close</button>
     </div>
-    ${clash.length?`<h3>Happening at the same time</h3>`+clash.map(o=>{const ov=venueById(o.venue);return `<div class="card" data-jump="${esc(o.id)}" style="--c:${ov.color};width:auto;margin-bottom:6px"><div class="k"><span>${esc(ov.name)}</span><span>${fmt(o.start)}–${fmt(o.end)}</span></div><div class="t">${esc(o.title)}</div></div>`}).join(''):''}
+    ${clash.length?`<h3>Happening at the same time</h3>`+clash.map(o=>{const ov=venueById(o.venue);return `<div class="card" ${RB} data-jump="${esc(o.id)}" style="--c:${ov.color};width:auto;margin-bottom:6px"><div class="k"><span>${esc(ov.name)}</span><span>${fmtW(o.start)}–${fmt(o.end)}</span></div><div class="t">${esc(o.title)}</div></div>`}).join(''):''}
   `);
   $('starOne').onclick=()=>{S.stars.has(s.id)?S.stars.delete(s.id):S.stars.add(s.id);saveStars();renderAll();openSession(id);};
-  $('goHere').onclick=()=>{S.here=s.venue;store.set('here:'+data.name,S.here);closeSheet();renderAll();};
+  $('goHere').onclick=()=>{S.here=s.venue;store.set('here:'+evKey(),S.here);closeSheet();renderAll();};
   $('closeS').onclick=closeSheet;
   $('sheet').querySelectorAll('[data-jump]').forEach(el=>el.onclick=()=>openSession(el.dataset.jump));
 }
@@ -316,16 +409,16 @@ function openLanes(){
   const groups={}; data.venues.forEach(v=>(groups[v.building]=groups[v.building]||[]).push(v));
   openSheet(`<h2>Rooms & venues</h2><div class="note">Tap to hide lanes you don’t care about. Tap a room name in the timeline to set “I'm here”.</div>`+
     Object.entries(groups).map(([b,vs])=>`<h3>${esc((data.buildings[b]||{}).name||b)}</h3><div class="chips">`+
-      vs.map(v=>`<div class="chip ${S.hidden.has(v.id)?'off':''}" data-lane="${esc(v.id)}" style="--c:${v.color}"><i></i>${esc(v.name)}</div>`).join('')+`</div>`).join('')+
+      vs.map(v=>`<div class="chip ${S.hidden.has(v.id)?'off':''}" ${RB} aria-pressed="${!S.hidden.has(v.id)}" data-lane="${esc(v.id)}" style="--c:${v.color}"><i></i>${esc(v.name)}</div>`).join('')+`</div>`).join('')+
     `<div class="row"><button class="btn" id="allOn">Show all</button><button class="btn" id="closeS">Done</button></div>`);
-  $('sheet').querySelectorAll('[data-lane]').forEach(el=>el.onclick=()=>{const id=el.dataset.lane;S.hidden.has(id)?S.hidden.delete(id):S.hidden.add(id);el.classList.toggle('off');store.set('hidden',[...S.hidden]);renderTimeline();renderStrip();});
+  $('sheet').querySelectorAll('[data-lane]').forEach(el=>el.onclick=()=>{const id=el.dataset.lane;S.hidden.has(id)?S.hidden.delete(id):S.hidden.add(id);el.classList.toggle('off');el.setAttribute('aria-pressed',!S.hidden.has(id));store.set('hidden',[...S.hidden]);renderTimeline();renderStrip();});
   $('allOn').onclick=()=>{S.hidden.clear();store.set('hidden',[]);renderAll();openLanes();};
   $('closeS').onclick=closeSheet;
 }
 function openHerePrompt(){
   openSheet(`<h2>Where are you?</h2><div class="note">Distance filters need a starting point.</div><div class="chips" style="margin-top:10px">`+
-    data.venues.map(v=>`<div class="chip" data-here="${esc(v.id)}" style="--c:${v.color}"><i></i>${esc(v.name)}</div>`).join('')+`</div>`);
-  $('sheet').querySelectorAll('[data-here]').forEach(el=>el.onclick=()=>{S.here=el.dataset.here;store.set('here:'+data.name,S.here);closeSheet();renderAll();});
+    data.venues.map(v=>`<div class="chip" ${RB} data-here="${esc(v.id)}" style="--c:${v.color}"><i></i>${esc(v.name)}</div>`).join('')+`</div>`);
+  $('sheet').querySelectorAll('[data-here]').forEach(el=>el.onclick=()=>{S.here=el.dataset.here;store.set('here:'+evKey(),S.here);closeSheet();renderAll();});
 }
 
 /* ---------- personal blocks: create / edit ---------- */
@@ -342,7 +435,7 @@ function openBlock(id,prefill){
   const dur=Math.round((b.end-b.start)/MIN), durs=[15,30,45,60,90,120,180];
   if(!durs.includes(dur)) durs.push(dur), durs.sort((a,b)=>a-b);
   openSheet(`<h2>${existing?'Edit block':'Block time'}</h2>
-    <div class="note">A meeting, call or break that's yours. Attach it to a room (or the spot next to it) and NowLine will check your walk to whatever's next.</div>
+    <div class="note">A meeting, call or break that's yours. Attach it to a room (or the spot next to it) and RoomHop will check your walk to whatever's next.</div>
     <div class="form">
       <label>What<input id="bTitle" placeholder="e.g. Coffee with Acme" value="${esc(b.title)}"></label>
       <div class="two">
@@ -384,8 +477,8 @@ function openAgenda(){
   openSheet(`<h2>My agenda</h2><div class="note">Your blocks plus starred sessions, with the walk between each.</div>`+
     (items.length?items.map((it,i)=>{
       const nx=iss.filter(c=>c.a===it);
-      return `<div class="card ${it.kind==='block'?'mine':''}" ${it.kind==='block'?`data-ag-block="${esc(it.id)}"`:`data-ag-id="${esc(it.id)}"`} style="width:auto;margin-top:8px;${it.kind==='session'?'--c:'+venueById(it.venue).color:''}">
-        <div class="k"><span>${fmt(it.start)}–${fmt(it.end)}</span><span>${it.kind==='block'?'yours':'session'}</span></div>
+      return `<div class="card ${it.kind==='block'?'mine':''}" ${RB} ${it.kind==='block'?`data-ag-block="${esc(it.id)}"`:`data-ag-id="${esc(it.id)}"`} style="width:auto;margin-top:8px;${it.kind==='session'?'--c:'+venueById(it.venue).color:''}">
+        <div class="k"><span>${fmtW(it.start)}–${fmt(it.end)}</span><span>${it.kind==='block'?'yours':'session'}</span></div>
         <div class="t">${it.kind==='block'?'👤 ':'★ '}${esc(it.title)}</div><div class="m">${esc(placeLabel(it))}</div></div>`+
         nx.map(c=>c.type==='overlap'||c.bad?`<div class="warnbox">⚠ ${esc(issueText(c))}</div>`:`<div class="note" style="padding:4px 10px">↓ ${c.walk} min walk · ${c.gap} min gap</div>`).join('');
     }).join(''):`<div class="empty">Nothing yet. Tap an empty slot in any room, or ☆ a session.</div>`)+
@@ -452,7 +545,7 @@ function openZones(){
   $('tzSave').onclick=()=>{
     const m=mode(), z=$('tzPick').value;
     if(m==='pick'&&!validZone(z)){ $('tzErr').textContent='Choose a time zone from the list.'; return; }
-    ZS=saveZoneSettings(store,data.name,{event:Z.fromFeed?ZS.event:($('tzEv').value||null),display:m==='pick'?z:m});
+    ZS=saveZoneSettings(store,evKey(),{event:Z.fromFeed?ZS.event:($('tzEv').value||null),display:m==='pick'?z:m},data.name);
     loadZones(); S.dayAuto=true; pickDay(true); S.follow=true; closeSheet(); renderAll();
   };
   $('closeS').onclick=closeSheet;
@@ -477,8 +570,8 @@ function directions(fromId,toId,startAt){
   if(startAt && w!=null){
     const t=now(), leaveIn=Math.round((startAt-t)/MIN)-w;
     timing = startAt<=t ? `<div class="warnbox">Already started. Go now (${w} min walk).</div>`
-      : leaveIn<=0 ? `<div class="warnbox">🏃 Leave now: ${w} min walk, starts ${fmt(startAt)}.</div>`
-      : `<div class="okbox">${w} min walk · leave by ${fmt(startAt-w*MIN)} (${leaveIn} min from now).</div>`;
+      : leaveIn<=0 ? `<div class="warnbox">🏃 Leave now: ${w} min walk, starts ${fmtW(startAt)}.</div>`
+      : `<div class="okbox">${w} min walk · leave by ${fmtW(startAt-w*MIN)}${leaveIn<=120?` (${leaveIn} min from now)`:''}.</div>`;
   } else if(w!=null) timing=`<div class="note">${w} min walk</div>`;
   return timing+`<ol style="margin:8px 0 0;padding-left:20px;color:#c9d0dc">${steps.map(x=>`<li style="margin:4px 0">${x}</li>`).join('')}</ol>`;
 }
@@ -491,26 +584,26 @@ function openHere(id){
   const nextAnywhere=data.sessions.filter(s=>s.start>t).sort((a,b)=>a.start-b.start)[0];
   openSheet(`<div><span class="pill c" style="--c:${v.color}">📍 You're here</span></div>
     <h2>${esc(v.name)}</h2><div class="note">${esc(b.name||'')}${v.where?' · '+esc(v.where):''}</div>
-    ${here.length?`<h3>In this room</h3>`+here.map(s=>`<div class="card" data-jump="${esc(s.id)}" style="--c:${v.color};width:auto;margin-bottom:6px"><div class="k"><span>${s.start<=t?'<b>● Now</b>':'Next'}</span><span>${fmt(s.start)}–${fmt(s.end)}</span></div><div class="t">${esc(s.title)}</div></div>`).join(''):''}
-    ${mine?`<h3>Your next stop</h3><div class="card ${mine.kind==='block'?'mine':''}" style="width:auto;${mine.kind==='session'?'--c:'+venueById(mine.venue).color:''}"><div class="k"><span>${mine.start<=t?'Now':'At '+fmt(mine.start)}</span><span>${mine.kind==='block'?'yours':'session'}</span></div><div class="t">${mine.kind==='block'?'👤 ':'★ '}${esc(mine.title)}</div><div class="m">${esc(placeLabel(mine))}</div></div>${mine.venue?directions(id,mine.venue,mine.start):''}`
+    ${here.length?`<h3>In this room</h3>`+here.map(s=>`<div class="card" ${RB} data-jump="${esc(s.id)}" style="--c:${v.color};width:auto;margin-bottom:6px"><div class="k"><span>${s.start<=t?'<b>● Now</b>':'Next'}</span><span>${fmtW(s.start)}–${fmt(s.end)}</span></div><div class="t">${esc(s.title)}</div></div>`).join(''):''}
+    ${mine?`<h3>Your next stop</h3><div class="card ${mine.kind==='block'?'mine':''}" style="width:auto;${mine.kind==='session'?'--c:'+venueById(mine.venue).color:''}"><div class="k"><span>${mine.start<=t?'Now':'At '+fmtW(mine.start)}</span><span>${mine.kind==='block'?'yours':'session'}</span></div><div class="t">${mine.kind==='block'?'👤 ':'★ '}${esc(mine.title)}</div><div class="m">${esc(placeLabel(mine))}</div></div>${mine.venue?directions(id,mine.venue,mine.start):''}`
       :`<div class="note" style="margin-top:10px">Star sessions or add blocks and this screen will route you to the next one.</div>`}
     <h3>Where do you want to go?</h3>
-    <div class="chips">${data.venues.filter(x=>x.id!==id).map(x=>`<div class="chip" data-to="${esc(x.id)}" style="--c:${x.color}"><i></i>${esc(x.name)}</div>`).join('')}</div>
+    <div class="chips">${data.venues.filter(x=>x.id!==id).map(x=>`<div class="chip" ${RB} data-to="${esc(x.id)}" style="--c:${x.color}"><i></i>${esc(x.name)}</div>`).join('')}</div>
     <div id="dirOut"></div>
     <div class="row"><button class="btn on" id="nearBtn">What's on near me</button><button class="btn" id="closeS">Close</button></div>`);
   $('sheet').querySelectorAll('[data-to]').forEach(el=>el.onclick=()=>{
     const to=el.dataset.to, nx=data.sessions.filter(s=>s.venue===to&&s.end>now()).sort((a,b)=>a.start-b.start)[0];
     $('dirOut').innerHTML=`<h3>To ${esc(venueById(to).name)}${nx?` · next: ${esc(nx.title)}`:''}</h3>`+directions(id,to,nx&&nx.start>now()?nx.start:null);
-    $('dirOut').scrollIntoView({behavior:'smooth',block:'nearest'});
+    $('dirOut').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'nearest'});
   });
   $('sheet').querySelectorAll('[data-jump]').forEach(el=>el.onclick=()=>openSession(el.dataset.jump));
   $('nearBtn').onclick=()=>{S.radius='5';store.set('radius','5');S.follow=true;closeSheet();renderAll();};
   $('closeS').onclick=closeSheet;
 }
 function handleHash(){
-  const h=decodeURIComponent(location.hash.slice(1)); if(!h.startsWith('here-')) return;
+  let h; try{h=decodeURIComponent(location.hash.slice(1));}catch(e){return;} if(!h.startsWith('here-')) return;
   const v=data.venues.find(v=>roomSlug(v)===h); if(!v) return;
-  S.here=v.id; store.set('here:'+data.name,S.here); S.follow=true; renderAll(); openHere(v.id);
+  S.here=v.id; store.set('here:'+evKey(),S.here); S.follow=true; renderAll(); openHere(v.id);
 }
 window.addEventListener('hashchange',handleHash);
 
@@ -539,44 +632,45 @@ function signImage(v,base,copy){
   else y+=32;
   lines.forEach(l=>{x.fillText(l,(W-x.measureText(l).width)/2,y);y+=lh;});
   x.fillStyle='#8a93a6';x.font='500 22px -apple-system,Segoe UI,Roboto,sans-serif';
-  const foot='NowLine · '+roomSlug(v); x.fillText(foot,(W-x.measureText(foot).width)/2,H-36);
+  const foot=(CFG.name||'RoomHop')+' · '+roomSlug(v); x.fillText(foot,(W-x.measureText(foot).width)/2,H-36);
   return c.toDataURL('image/png');
 }
 function openSigns(){
   const base=signBase(), copy=store.get('signText',DEFAULT_SIGN_TEXT), src=signSource();
   openSheet(`<h2>Room signs</h2>
-    <div class="note">One QR sign per room. Scanning it opens NowLine, sets “I'm here” to that room and shows directions to the person's next stop. Long-press (or right-click) a sign to save it, then print. Set the page link to the public address where attendees can open NowLine.</div>
-    ${src?`<div class="okbox" id="sgFeed">The QR links include this schedule's feed (${esc(src.feed)}), so a phone that has never opened NowLine loads it on the first scan.</div>`
+    <div class="note">One QR sign per room. Scanning it opens RoomHop, sets “I'm here” to that room and shows directions to the person's next stop. Long-press (or right-click) a sign to save it, then print. Set the page link to the public address where attendees can open RoomHop.</div>
+    ${src?`<div class="okbox" id="sgFeed">The QR links include this schedule's feed (${esc(src.feed)}), so a phone that has never opened RoomHop loads it on the first scan.</div>`
       :data.name.startsWith('Demo')?'':`<div class="warnbox" id="sgWarn">⚠ This schedule was loaded from a file or pasted text, so the QR links can't carry it. A phone that hasn't already loaded this schedule will see the demo instead. To make signs work on any phone, load the schedule from its feed link (Load schedule… → From a link), then generate the signs again.</div>`}
     <div class="form">
       <label>Sign text<textarea id="sgText" style="min-height:60px">${esc(copy)}</textarea></label>
       <label>Page link (where the QR points)<input id="sgBase" value="${esc(base)}"></label>
     </div>
-    <div class="row"><button class="btn on" id="sgGo">Update signs</button><button class="btn" id="closeS">Close</button></div>
+    <div class="row"><button class="btn on" id="sgGo">Update signs</button><button class="btn" id="sgPrint">Print all</button><button class="btn" id="closeS">Close</button></div>
     <div id="sgOut"></div>`);
   const draw=()=>{
     const b=$('sgBase').value.trim()||defaultSignBase(location.href), t=$('sgText').value.trim()||DEFAULT_SIGN_TEXT;
     // only an organizer override is saved, so the default keeps following wherever this copy is hosted
     b===defaultSignBase(location.href)?store.del('signBase'):store.set('signBase',b); store.set('signText',t);
     $('sgOut').innerHTML=data.venues.map(v=>`<h3>${esc(v.name)}</h3><img alt="QR sign for ${esc(v.name)}" src="${signImage(v,b,t)}" style="width:100%;max-width:420px;border-radius:10px;display:block">
-      <div class="row" style="margin-top:6px"><button class="btn" data-copy="${esc(roomLink(b,v,src))}">Copy link</button><button class="btn" data-try="${esc(v.id)}">Preview scan</button></div>`).join('');
+      ${signLenNote(roomLink(b,v,src))}<div class="row" style="margin-top:6px"><button class="btn" data-copy="${esc(roomLink(b,v,src))}">Copy link</button><button class="btn" data-try="${esc(v.id)}">Preview scan</button></div>`).join('');
     $('sgOut').querySelectorAll('[data-copy]').forEach(el=>el.onclick=()=>{
       const done=()=>{el.textContent='Copied';setTimeout(()=>el.textContent='Copy link',1500);};
       try{navigator.clipboard.writeText(el.dataset.copy).then(done,()=>{el.textContent=el.dataset.copy;});}catch(e){el.textContent=el.dataset.copy;}
     });
-    $('sgOut').querySelectorAll('[data-try]').forEach(el=>el.onclick=()=>{S.here=el.dataset.try;store.set('here:'+data.name,S.here);renderAll();openHere(el.dataset.try);});
+    $('sgOut').querySelectorAll('[data-try]').forEach(el=>el.onclick=()=>{S.here=el.dataset.try;store.set('here:'+evKey(),S.here);renderAll();openHere(el.dataset.try);});
   };
   $('sgGo').onclick=draw; $('closeS').onclick=closeSheet; draw();
+  $('sgPrint').onclick=()=>{printAllSigns($('sgBase').value.trim()||defaultSignBase(location.href),$('sgText').value.trim()||DEFAULT_SIGN_TEXT);};
 }
 $('signsBtn').onclick=openSigns;
 // A link that opens this schedule on any phone: the same feed/relay/tz a room sign carries, without the room.
 function openShare(){
   const src=signSource(), link=src&&shareLink(signBase(),src);
   openSheet(`<h2>Share this schedule</h2>
-    ${link?`<div class="note">Anyone who opens this link gets “${esc(data.name)}” loaded from its feed, even on a phone that has never opened NowLine. Post it in the event's chat or put it on a slide.</div>
+    ${link?`<div class="note">Anyone who opens this link gets “${esc(data.name)}” loaded from its feed, even on a phone that has never opened RoomHop. Post it in the event's chat or put it on a slide.</div>
       <div class="form"><input id="shLink" readonly value="${esc(link)}"></div>
       <div class="row">${navigator.share?'<button class="btn on" id="shGo">Share…</button>':''}<button class="btn${navigator.share?'':' on'}" id="shCopy">Copy link</button><button class="btn" id="closeS">Close</button></div>`
-    :`<div class="warnbox" id="shWarn">⚠ ${data.name.startsWith('Demo')?'This is the demo.':'This schedule was loaded from a file or pasted text, so there is no link to share.'} Load a schedule from its feed link (Load schedule… → From a link) to get a link anyone can open.</div>
+    :`<div class="warnbox" id="shWarn">⚠ ${data.name.startsWith('Demo')?'The demo has no link to share.':'This schedule was loaded from a file or pasted text, so there is no link to share.'} Load a schedule from its feed link (Load schedule… → From a link) to get a link anyone can open.</div>
       <div class="row"><button class="btn" id="closeS">Close</button></div>`}`);
   $('closeS').onclick=closeSheet;
   if(!link) return;
@@ -592,7 +686,7 @@ $('shareBtn').onclick=openShare;
 let VIEW='timeline';
 function setView(v){
   VIEW=v; document.body.classList.toggle('mapmode',v==='map');
-  $('vTl').classList.toggle('on',v!=='map'); $('vMap').classList.toggle('on',v==='map');
+  $('vTl').classList.toggle('on',v!=='map'); $('vMap').classList.toggle('on',v==='map'); $('vTl').setAttribute('aria-pressed',v!=='map'); $('vMap').setAttribute('aria-pressed',v==='map');
   if(v==='map'){ renderMap(true); } else { S.follow=true; tick(true); }
 }
 $('vTl').onclick=()=>setView('timeline'); $('vMap').onclick=()=>setView('map');
@@ -641,7 +735,7 @@ function renderMap(refit){
     const m=b.map; if(!m) continue;
     const anyVenue=data.venues.find(v=>v.building===bid), w=anyVenue?walkMin(anyVenue.id):null;
     const far=anyVenue&&!inRange(anyVenue.id);
-    h+=`<g opacity="${far?0.35:1}"><rect x="${m.x}" y="${m.y}" width="${m.w}" height="${m.h}" rx="14" fill="${b.color}" fill-opacity=".10" stroke="${b.color}" stroke-opacity=".6" stroke-width="${2*k}"/>`;
+    h+=`<g opacity="${far?0.7:1}"><rect x="${m.x}" y="${m.y}" width="${m.w}" height="${m.h}" rx="14" fill="${b.color}" fill-opacity=".10" stroke="${b.color}" stroke-opacity=".6" stroke-width="${2*k}"/>`;
     h+=`<text x="${m.x+12}" y="${m.y+20*k}" fill="${b.color}" font-size="${13*k}" font-weight="700">${esc(b.name)}</text>`;
     if(w!=null && me && me.building!==bid){
       const bx=m.x+m.w-10, by=m.y+10;
@@ -669,11 +763,11 @@ function renderMap(refit){
     const sst=sessStatus(v,t), far=!inRange(v.id), isMe=me&&me.id===v.id;
     const col=sst.live?'#ff4d5e':(sst.soon?'#ffc94d':'#566074');
     const x=v.map.x, y=v.map.y;
-    h+=`<g data-room="${esc(v.id)}" style="cursor:pointer" opacity="${far?0.35:1}">`;
-    h+=`<circle cx="${x}" cy="${y}" r="${30*k}" fill="transparent"/>`;
+    const label=v.name, sub=sst.live?('● '+sst.live.title):(sst.next?(fmtW(sst.next.start)+' '+sst.next.title):'Nothing scheduled');
+    h+=`<g data-room="${esc(v.id)}" tabindex="0" role="button" aria-label="${esc(label+': '+sub)}" style="cursor:pointer" opacity="${far?0.7:1}">`;
+    h+=`<circle class="hit" cx="${x}" cy="${y}" r="${30*k}" fill="transparent"/>`;
     if(sst.live) h+=`<circle cx="${x}" cy="${y}" r="9" fill="none" stroke="${col}" stroke-width="${2*k}" class="pulse"/>`;
     h+=`<circle cx="${x}" cy="${y}" r="${8*k}" fill="${col}" stroke="#0e1116" stroke-width="${2*k}"/>`;
-    const label=v.name, sub=sst.live?('● '+sst.live.title):(sst.next?(fmt(sst.next.start)+' '+sst.next.title):'Nothing scheduled');
     h+=`<text x="${x}" y="${y-14*k}" fill="#e8ecf3" font-size="${12*k}" font-weight="700" text-anchor="middle" paint-order="stroke" stroke="#0b0e13" stroke-width="${4*k}">${esc(label)}</text>`;
     h+=`<text x="${x}" y="${y+22*k}" fill="${sst.live?'#ff9aa4':'#8a93a6'}" font-size="${10*k}" text-anchor="middle" paint-order="stroke" stroke="#0b0e13" stroke-width="${3*k}">${esc(sub.length>24?sub.slice(0,23)+'…':sub)}</text>`;
     h+=`</g>`;
@@ -683,7 +777,7 @@ function renderMap(refit){
     h+=`<circle cx="${me.map.x}" cy="${me.map.y}" r="${11*k}" fill="#7cc4ff" stroke="#fff" stroke-width="${3*k}"/>`;
     h+=`<text x="${me.map.x}" y="${me.map.y+38*k}" fill="#7cc4ff" font-size="${11*k}" font-weight="800" text-anchor="middle" paint-order="stroke" stroke="#0b0e13" stroke-width="${4*k}">YOU</text>`;
   }
-  svg.innerHTML=h;
+  keepFocus(svg,()=>svg.innerHTML=h);
   $('mapHint').innerHTML=me?`📍 You're at <b>${esc(me.name)}</b>. Tap a room for directions.`:`Tap a room and choose “I'm here”, or scan a room sign.`;
 }
 function renderMapList(){
@@ -692,22 +786,22 @@ function renderMapList(){
     .filter(r=>r.live||r.next).sort((a,b)=>(a.w??99)-(b.w??99)||((a.live?0:1)-(b.live?0:1)));
   const row=r=>{
     const s=r.live||r.next, isMe=me&&r.v.id===me.id;
-    const stx=r.live?`<span class="st live">● LIVE · ${relLabel(r.live.end-t)} left</span>`:`<span class="st ${r.soon?'soon':''}">${r.soon?'in '+relLabel(r.next.start-t):fmt(r.next.start)}</span>`;
-    return `<div class="mrow" data-maproom="${esc(r.v.id)}"><div class="wk" style="color:${r.v.color}">${isMe?'📍':(r.w!=null?r.w:'·')}<small>${isMe?'here':(r.w!=null?'min':'')}</small></div><div class="bd"><b>${esc(s.title)}</b><span>${esc(r.v.name)}</span></div>${stx}</div>`;
+    const stx=r.live?`<span class="st live">● LIVE · ${relLabel(r.live.end-t)} left</span>`:`<span class="st ${r.soon?'soon':''}">${r.soon?'in '+relLabel(r.next.start-t):fmtW(r.next.start)}</span>`;
+    return `<div class="mrow" ${RB} data-maproom="${esc(r.v.id)}"><div class="wk" style="color:${r.v.color}">${isMe?'📍':(r.w!=null?r.w:'·')}<small>${isMe?'here':(r.w!=null?'min':'')}</small></div><div class="bd"><b>${esc(s.title)}</b><span>${esc(r.v.name)}</span></div>${stx}</div>`;
   };
-  $('mapList').innerHTML=`<h3>${me?(S.radius==='all'?'By walking time from you':'Within your range'):'Live and up next'}</h3>`+(rows.length?rows.map(row).join(''):`<div class="empty">Nothing on${S.radius!=='all'?' within your range':''} right now.</div>`);
+  keepFocus($('mapList'),()=>$('mapList').innerHTML=`<h3>${me?(S.radius==='all'?'By walking time from you':'Within your range'):'Live and up next'}</h3>`+(rows.length?rows.map(row).join(''):`<div class="empty">Nothing on${S.radius!=='all'?' within your range':''} right now.</div>`));
   $('mapList').querySelectorAll('[data-maproom]').forEach(el=>el.onclick=()=>openRoom(el.dataset.maproom));
 }
 function openRoom(id){
   const v=venueById(id), b=data.buildings[v.building]||{}, t=now(), me=S.here&&venueById(S.here);
   const ss=data.sessions.filter(s=>s.venue===id&&s.end>t).sort((a,b)=>a.start-b.start).slice(0,3);
   openSheet(`<div><span class="pill c" style="--c:${v.color}">${esc(b.name||'')}</span></div><h2>${esc(v.name)}</h2>${v.where?`<div class="note">${esc(v.where)}</div>`:''}
-    ${ss.length?`<h3>On here</h3>`+ss.map(s=>`<div class="card" data-jump="${esc(s.id)}" style="--c:${v.color};width:auto;margin-bottom:6px"><div class="k"><span>${s.start<=t?'<b>● Now</b>':'Next'}</span><span>${fmt(s.start)}–${fmt(s.end)}</span></div><div class="t">${esc(s.title)}</div></div>`).join(''):`<div class="empty">Nothing else scheduled here.</div>`}
+    ${ss.length?`<h3>On here</h3>`+ss.map(s=>`<div class="card" ${RB} data-jump="${esc(s.id)}" style="--c:${v.color};width:auto;margin-bottom:6px"><div class="k"><span>${s.start<=t?'<b>● Now</b>':'Next'}</span><span>${fmtW(s.start)}–${fmt(s.end)}</span></div><div class="t">${esc(s.title)}</div></div>`).join(''):`<div class="empty">Nothing else scheduled here.</div>`}
     ${me&&me.id!==id?`<h3>Getting there</h3>`+directions(me.id,id,ss[0]&&ss[0].start>t?ss[0].start:null):''}
     <div class="row">${me&&me.id!==id?'<button class="btn on" id="rRoute">Show route on map</button>':''}${!me||me.id!==id?`<button class="btn ${me?'':'on'}" id="rHere">I'm here</button>`:''}<button class="btn" id="closeS">Close</button></div>`);
   $('sheet').querySelectorAll('[data-jump]').forEach(el=>el.onclick=()=>openSession(el.dataset.jump));
   if($('rRoute')) $('rRoute').onclick=()=>{mapRoute=id;closeSheet();setView('map');fitRoute(me,v);};
-  if($('rHere')) $('rHere').onclick=()=>{S.here=id;store.set('here:'+data.name,id);mapRoute=null;closeSheet();renderAll();renderMap(true);};
+  if($('rHere')) $('rHere').onclick=()=>{S.here=id;store.set('here:'+evKey(),id);mapRoute=null;closeSheet();renderAll();renderMap(true);};
   $('closeS').onclick=closeSheet;
 }
 function fitRoute(a,b){
@@ -745,16 +839,16 @@ window.addEventListener('resize',()=>{if(VIEW==='map') renderMap(true);});
 
 /* ---------- guided tour with voiceover ---------- */
 const TOUR=[
-  {ttl:'The problem', say:"Ever been at a conference and don't know what sessions are happening right now, since the agenda is confusing and you are in an unknown place?", scene:'mess'},
+  {ttl:'The problem', say:"Ever stood in a conference hallway with no idea what's on right now, or where it is?", scene:'mess'},
   {ttl:'The problem', say:"Ever wondered: where am I? Do I have time to get to my session?", scene:'mess2'},
-  {ttl:'Meet NowLine', say:"Meet NowLine. Every room is a swim lane, and the red line is right now. It moves with the clock, so the schedule always starts from where you are in time.",
+  {ttl:'Meet RoomHop', say:"Meet RoomHop. Every room is a swim lane, and the red line is right now. It moves with the clock, so the schedule always starts from where you are in time.",
     before:async()=>{closeSheet();S.radius='all';S.here=null;S.follow=true;setClock(Date.now(),1);}, target:()=>$('tl')},
   {ttl:'Time moves', say:"Watch an hour go by. Sessions fill in as they run, and fade once they're over.",
     before:async()=>{S.follow=true;setClock(now(),600);}, after:async()=>{setClock(Date.now(),1);}, target:()=>$('nowline'), pad:30},
   {ttl:'Now & next', say:"Up top: what's live this minute, and what starts in the next forty-five, with a heads-up when you need to leave.", target:()=>$('strip')},
   {ttl:'Where am I?', say:"Lost? Every room has a sign. Scan it with your phone's camera.", scene:'scan'},
-  {ttl:"You're here", say:"NowLine now knows you're in Workshop B. It shows what's on in this room, and routes you to your next stop, with a leave-by time.",
-    before:async()=>{S.here='wb';store.set('here:'+data.name,'wb');renderAll();openHere('wb');await sleep(450);},
+  {ttl:"You're here", say:"RoomHop now knows you're in Workshop B. It shows what's on in this room, and routes you to your next stop, with a leave-by time.",
+    before:async()=>{S.here='wb';store.set('here:'+evKey(),'wb');renderAll();openHere('wb');await sleep(450);},
     target:()=>{const el=$('sheet').querySelector('.okbox,.warnbox');if(el)el.scrollIntoView({block:'center'});return el;}, pad:8},
   {ttl:'Step by step', say:"Turn by turn: cross the street, follow the Expo signs, the coffee bar is on your right.",
     target:()=>$('sheet').querySelector('ol'), pad:8},
@@ -763,12 +857,12 @@ const TOUR=[
   {ttl:'On the map', say:"Prefer a map? See where you are, which talks are live around you, how many minutes' walk each one is, and the route there.", view:'map',
     before:async()=>{S.radius='all';S.here='wb';mapRoute='hall';setView('map');const a=venueById('wb'),b=venueById('hall');if(a&&b)fitRoute(a,b);await sleep(300);},
     target:()=>$('mapBox'), pad:0},
-  {ttl:'Will I make it?', say:"Add your own meetings to the Me lane. NowLine checks the walk between everything, and warns you before you're late.",
+  {ttl:'Will I make it?', say:"Add your own meetings to the Me lane. RoomHop checks the walk between everything, and warns you before you're late.",
     before:async()=>{S.radius='all';S.follow=true;renderAll();const w=document.querySelector('.cf');if(w){S.follow=false;const tl=$('tl');tl.scrollLeft=Math.max(0,104+w.offsetLeft-tl.clientWidth*0.6);}await sleep(400);},
     target:()=>document.querySelector('.lane.me'), pad:4},
   {ttl:'The warning', say:"Three minutes between your client coffee and the workshop, but it's a six minute walk. Now you know, before it happens.",
     before:async()=>{$('strip').scrollLeft=0;}, target:()=>document.querySelector('.card.warn')||$('strip')},
-  {ttl:'NowLine', say:"NowLine. Know what's on, where you are, and whether you'll make it. Open source, and coming to a conference near you.", scene:'end'},
+  {ttl:'RoomHop', say:"RoomHop. Know what's on, where you are, and whether you'll make it. Open source, and coming to a conference near you.", scene:'end'},
 ];
 const T={on:false,i:0,token:0,muted:store.get('tourMuted',false),voice:null,timer:null,raf:null};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -840,12 +934,12 @@ function setScene(kind){
   } else if(kind==='scan'){
     const v=venueById('wb')||data.venues[0];
     const m=document.createElement('div');m.className='scan';
-    m.innerHTML=`<div class="ph"><img alt="" src="${signImage(v,signBase(),store.get('signText',DEFAULT_SIGN_TEXT))}"><div class="ln"></div><div class="ok" id="scanOk">📍 Open NowLine: ${esc(v.name)}</div></div>`;
+    m.innerHTML=`<div class="ph"><img alt="" src="${signImage(v,signBase(),store.get('signText',DEFAULT_SIGN_TEXT))}"><div class="ln"></div><div class="ok" id="scanOk">📍 Open RoomHop: ${esc(v.name)}</div></div>`;
     document.body.appendChild(m);
     setTimeout(()=>{const ok=$('scanOk');if(ok)ok.style.opacity=1;},2200);
   } else if(kind==='end'){
     const m=document.createElement('div');m.className='tcard';
-    m.innerHTML=`<div class="box"><div class="brand" style="font-size:15px">📍</div><h1>Now<span>Line</span></h1><p>Know what's on, where you are, and whether you'll make it.</p><button class="btn on" id="tryIt">Try it yourself</button></div>`;
+    m.innerHTML=`<div class="box"><div class="brand" style="font-size:15px">📍</div><h1>Room<span>Hop</span></h1><p>Know what's on, where you are, and whether you'll make it.</p><button class="btn on" id="tryIt">Try it yourself</button></div>`;
     document.body.appendChild(m); $('tryIt').onclick=endTour;
   }
 }
@@ -853,7 +947,7 @@ function renderCap(step){
   const {cap}=tourLayer();
   cap.innerHTML=`<div class="ttl">${esc(step.ttl)}</div><div class="txt">${esc(step.say)}</div>
     <div class="ctl"><div class="dots">${TOUR.map((_,k)=>`<i class="${k<=T.i?'on':''}"></i>`).join('')}</div>
-    <div style="display:flex;gap:6px"><button class="btn" id="tMute">${T.muted?'🔇':'🔈'}</button><button class="btn" id="tBack">‹</button><button class="btn" id="tNext">Next ›</button><button class="btn" id="tExit">✕</button></div></div>`;
+    <div style="display:flex;gap:6px"><button class="btn" id="tMute" aria-label="${T.muted?'Turn voiceover on':'Mute voiceover'}">${T.muted?'🔇':'🔈'}</button><button class="btn" id="tBack" aria-label="Previous step">‹</button><button class="btn" id="tNext">Next ›</button><button class="btn" id="tExit" aria-label="End tour">✕</button></div></div>`;
   $('tMute').onclick=()=>{T.muted=!T.muted;store.set('tourMuted',T.muted);try{speechSynthesis.cancel();if(T.audio)T.audio.pause();}catch(e){}renderCap(step);};
   $('tNext').onclick=()=>jump(T.i+1);
   $('tBack').onclick=()=>jump(Math.max(0,T.i-1));
@@ -902,69 +996,174 @@ function endTour(){
   closeSheet();
   if(tourSaved){data=tourSaved.data;S.hidden=new Set(tourSaved.hidden);S.starOnly=tourSaved.starOnly;boot();S.here=tourSaved.here;S.radius=tourSaved.radius;renderAll();tourSaved=null;}
 }
+// first visit: a dismissible banner, not a modal. The tour starts muted (captions carry it); 🔈 turns the voice on.
 function tourIntro(){
-  const m=document.createElement('div');m.className='tcard';m.style.background='rgba(5,7,12,.8)';
-  m.innerHTML=`<div class="box"><h1>Now<span>Line</span></h1><p>A 90-second guided tour, with voiceover. Turn your sound on.</p><div class="row" style="justify-content:center"><button class="btn on" id="tGo">▶ Play tour</button><button class="btn" id="tSilent">Play muted</button><button class="btn" id="tNo">Skip</button></div></div>`;
-  document.body.appendChild(m);
-  $('tGo').onclick=()=>{m.remove();T.muted=false;store.set('tourMuted',false);startTour();};
-  $('tSilent').onclick=()=>{m.remove();T.muted=true;store.set('tourMuted',true);startTour();};
-  $('tNo').onclick=()=>m.remove();
+  const b=$('tourBanner'); b.hidden=false;
+  $('tGo').onclick=()=>{b.hidden=true;T.muted=true;startTour();};
+  $('tNo').onclick=()=>{b.hidden=true;};
 }
-$('tourBtn').onclick=()=>{ if(T.on) endTour(); else startTour(); };
+$('tourBtn').onclick=()=>{ if(T.on) endTour(); else {closeSheet();startTour();} };
 window.addEventListener('hashchange',()=>{ if(location.hash==='#tour'&&!T.on) tourIntro(); });
 
 const parseAny=txt=>{ const t=txt.replace(/^\uFEFF/,'').trim(); return /^BEGIN:VCALENDAR/i.test(t)?scheduleFromICS(t):normalize(JSON.parse(t)); };
-async function fetchFeed(u,r){ const res=await fetch(r? r+encodeURIComponent(u) : u); if(!res.ok) throw new Error('HTTP '+res.status); return res.text(); }
+// direct first: a same-origin or CORS-enabled feed (or venue file) never touches the relay. The relay is only
+// tried when the direct fetch fails (network/CORS) or isn't OK.
+async function fetchFeed(u,r,signal){
+  try{ const res=await fetch(u,{signal}); if(res.ok) return await res.text(); if(!r) throw new Error('HTTP '+res.status); }
+  catch(e){ if(!r) throw e; }
+  const res=await fetch(r+encodeURIComponent(u),{signal}); if(!res.ok) throw new Error('HTTP '+res.status); return res.text();
+}
+// a big schedule can exceed localStorage: it still works now, but say it won't survive a reload
+const saveData=d=>{ if(!store.set('data',d)) notice(["⚠ This schedule is too big to save on this device. It works now, but it won't survive a reload."]); };
+let toastT;
+function notice(lines){
+  const el=$('toast'); el.innerHTML=(el.classList.contains('show')?el.innerHTML:'')+lines.map(l=>`<div>${esc(l)}</div>`).join('');
+  el.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>el.classList.remove('show'),15000);
+}
+$('toast').onclick=()=>$('toast').classList.remove('show');
+
+/* ---------- feed refresh: re-fetch a schedule loaded from a link, and say what moved ---------- */
+let FRESH=true, refreshing=false;   // FRESH: the last refresh worked (else the header says "Offline")
+function renderFresh(){
+  const s=data.source, el=$('fresh');
+  el.textContent=!s?.feed?'':FRESH?(s.fetchedAt?'Updated '+fmt(s.fetchedAt):''):'Offline'+(s.fetchedAt?' · schedule from '+fmt(s.fetchedAt):'');
+  el.classList.toggle('off',!FRESH);
+}
+async function refreshFeed({force}={}){
+  const src=data.source; if(!src?.feed||src.shifted||refreshing) return;   // a shifted replay would snap back to real dates
+  if(navigator.onLine===false){ FRESH=false; renderFresh(); return; }
+  if(!force&&Date.now()-(src.fetchedAt||0)<5*MIN) return;
+  refreshing=true; const ac=new AbortController(), to=setTimeout(()=>ac.abort(),15000);
+  try{
+    const d=await fetchSchedule(src.feed,src.relay,src.venue,ac.signal);   // venue re-applied; no "shift dates to today" here
+    if(data.source?.feed!==src.feed) return;                          // something else was loaded meanwhile
+    const old=data, here=S.here; d.source={...src,fetchedAt:Date.now()};
+    data=d; FRESH=true; loadZones(); S.here=here&&venueById(here)?here:null; pickDay(S.dayAuto!==false); saveData(d); renderAll();
+    const name=id=>(venueById(id)||{name:id}).name;
+    const msgs=diffSessions(old.sessions,d.sessions).filter(c=>S.stars.has(c.id)).map(c=>c.gone?`Removed: ${c.title}`:
+      c.room?`Room changed: ${c.title} → ${name(c.now.venue)}`+(c.time?' at '+fmt(c.now.start):''):`Time changed: ${c.title} → ${fmt(c.now.start)}`);
+    if(msgs.length) notice(msgs);
+  }catch(e){ FRESH=false; renderFresh(); }
+  finally{ clearTimeout(to); refreshing=false; }
+}
 function openImport(){
   openSheet(`<h2>Load a schedule</h2>
-    <h3>From Sched (KubeCon, AGNTCon + MCPCon, Open Source Summit…)</h3>
+    <h3>From Sched (used by KubeCon, Open Source Summit and others)</h3>
     <div class="note">On the event's Sched site, <b>log out</b>, tap <b>Mobile App + iCal</b>, and download or copy the calendar for the <i>whole event</i>. Choose that file below, or paste its text. Any whole-event .ics works (Swapcard, Cvent and others export them too).</div>
     <div class="form" style="margin-top:8px"><input type="file" id="impFile" accept=".ics,.json,text/calendar,application/json"></div>
     <h3>From a link</h3>
-    <div class="form"><input id="impUrl" placeholder="https://yourevent.sched.com/all.ics" value="${esc(store.get('impUrl',''))}"><input id="impRelay" placeholder="${DEFAULT_RELAY?'Relay URL (optional; empty uses the public NowLine relay)':'Relay URL, e.g. https://relay.example.workers.dev/?url='}" value="${esc(store.get('impRelay',''))}"></div>
+    <div class="form"><input id="impUrl" placeholder="https://yourevent.sched.com/all.ics" value="${esc(store.get('impUrl',''))}"><input id="impRelay" placeholder="${DEFAULT_RELAY?'Relay URL (optional; empty uses the public RoomHop relay)':'Relay URL, e.g. https://relay.example.workers.dev/?url='}" value="${esc(store.get('impRelay',''))}"><input id="impVenue" placeholder="Venue file URL (optional): buildings and walk times, see docs/importing.md" value="${esc(store.get('impVenue',''))}"></div>
     <div class="row" style="margin-top:6px"><button class="btn" id="impFetch">Fetch</button></div>
     <div class="note" style="margin-top:4px">Most schedule sites don't let browsers fetch their feeds directly, so fetching by link goes through a small relay${DEFAULT_RELAY?'':' (a Cloudflare Worker; see docs/relay.md). Without one, download the file and choose it above'}.</div>
     <h3>Or paste</h3>
     <div class="note">A calendar (.ics text), <b>pretalx / frab</b> <code>schedule.json</code>, <b>Sessionize</b> “All data” or “Schedule grid”, or the simple format. Times show in the event’s time zone when the schedule gives one (change it under “Time zone…”).</div>
     <textarea id="imp" placeholder='BEGIN:VCALENDAR… or {…}'></textarea>
     <div class="note" id="impInfo"></div>
-    <label class="ck"><input type="checkbox" id="rebase"> Shift dates to today (to try a past conference live)</label>
+    <label class="ck"><input type="checkbox" id="rebase"> Replay it today (moves a past event's dates to today)</label>
     <div class="err" id="impErr"></div>
-    <div class="row"><button class="btn on" id="doImp">Load</button><button class="btn" id="fill">Insert simple example</button><button class="btn" id="resetDemo">Back to demo</button><button class="btn" id="closeS">Cancel</button></div>`);
+    <div class="row"><button class="btn on" id="doImp">Load</button><button class="btn" id="fill">Paste an example</button><button class="btn" id="resetDemo">Back to demo</button><button class="btn" id="closeS">Cancel</button></div>`);
   $('fill').onclick=()=>{$('imp').value=SAMPLE_SIMPLE;$('rebase').checked=true;};
   $('closeS').onclick=closeSheet;
   $('resetDemo').onclick=()=>{store.set('data',null);data=demoData();boot();closeSheet();};
   let fetched=null;   // {text, feed, relay} from the last successful Fetch, so the loaded schedule remembers its link
   const preview=()=>{ try{ const d=parseAny($('imp').value); const days=new Set(d.sessions.map(s=>dayKey(s.start))).size;
       $('impInfo').textContent=`Looks good: ${d.sessions.length} sessions in ${d.venues.length} rooms over ${days} day${days>1?'s':''}${d.name?' · '+d.name:''}.`; $('impErr').textContent=''; }
-    catch(e){ $('impInfo').textContent=''; if($('imp').value.trim()) $('impErr').textContent='Not readable yet: '+e.message; } };
+    catch(e){ $('impInfo').textContent=''; if($('imp').value.trim()) $('impErr').textContent="That doesn't look like .ics or schedule JSON ("+e.message+")"; } };
   $('imp').oninput=preview;
   $('impFile').onchange=e=>{const f=e.target.files[0]; if(!f) return; f.text().then(t=>{$('imp').value=t;preview();});};
   $('impFetch').onclick=async()=>{
-    const u=$('impUrl').value.trim(), typed=$('impRelay').value.trim(), r=typed||DEFAULT_RELAY; store.set('impUrl',u); store.set('impRelay',typed);
-    if(!/^https:\/\//.test(u)){ $('impErr').textContent='Enter an https:// link.'; return; }
+    const u=$('impUrl').value.trim(), typed=$('impRelay').value.trim(), r=typed||CFG.relay||DEFAULT_RELAY, vu=$('impVenue').value.trim(); store.set('impUrl',u); store.set('impRelay',typed); store.set('impVenue',vu);
+    if(!/^https:\/\//.test(u)||vu&&!/^https:\/\//.test(vu)){ $('impErr').textContent='Enter an https:// link.'; return; }
     $('impErr').textContent=''; $('impInfo').textContent='Fetching…';
-    try{ const text=await fetchFeed(u,r); $('imp').value=text; fetched={text,feed:u,relay:r||null}; preview(); }
+    try{ const [text,venue]=await Promise.all([fetchFeed(u,r),vu?fetchVenue(vu,r):null]); $('imp').value=text; fetched={text,feed:u,relay:r||null,venue,venueUrl:vu||null}; preview(); }
     catch(e){ $('impInfo').textContent=''; $('impErr').textContent='Could not fetch it ('+e.message+'). Download the file and choose it above, or set a relay URL.'; }
   };
   $('doImp').onclick=()=>{
     try{
       let d=parseAny($('imp').value);
-      if($('rebase').checked){ const ev=resolveZones(d,loadZoneSettings(store,d.name),deviceZone()).event; d=rebaseToToday(rezone(d,ev),ev); }
-      if(fetched&&fetched.text===$('imp').value) d.source={feed:fetched.feed,relay:fetched.relay};
-      data=d; store.set('data',d); S.hidden.clear(); store.set('hidden',[]); boot(); closeSheet();
+      if(fetched&&fetched.text===$('imp').value){ if(fetched.venue) d=applyVenue(d,fetched.venue); d.source={feed:fetched.feed,relay:fetched.relay,fetchedAt:Date.now(),...(fetched.venue?{venue:fetched.venueUrl}:{})}; }
+      if($('rebase').checked){ const ev=resolveZones(d,loadZoneSettings(store,d.source?.feed||d.name,d.name),deviceZone()).event; d=rebaseToToday(rezone(d,ev),ev); if(d.source) d.source.shifted=true; }
+      data=d; saveData(d); S.hidden.clear(); store.set('hidden',[]); FRESH=true; boot(); closeSheet();
     }catch(e){$('impErr').textContent='Could not read that: '+e.message;}
   };
 }
 
+/* ---------- organizer: venue overlay, roomhop.config.json, attendee + embed modes, print all signs ---------- */
+const Q=new URLSearchParams(location.search);
+const EMBED=Q.get('embed')==='1';
+if(EMBED){ store.set=()=>true; store.del=()=>{}; }   // an embedded copy never writes the host page's storage
+let CFG={};
+// roomhop.config.json is requested by an inline script in index.html (in parallel with loading the modules);
+// a 404, bad JSON or a slow answer all mean the defaults
+async function loadConfig(){
+  const p=window.ROOMHOP_CONFIG||fetch('roomhop.config.json',{cache:'no-cache'}).then(r=>r.ok?r.json():null);
+  const raw=await Promise.race([Promise.resolve(p).catch(()=>null),sleep(1500).then(()=>null)]);
+  return sanitizeConfig(raw,location.href);
+}
+function applyConfig(c){
+  Object.entries(c.colors||{}).forEach(([k,v])=>document.documentElement.style.setProperty('--'+k,v));
+  if(c.name) document.title=c.name+' · RoomHop';
+  if(c.logo){ const img=document.createElement('img'); img.className='logo'; img.src=c.logo; img.alt=c.name||''; document.querySelector('header .brand').before(img); }
+  if(c.tour===false) $('tourBtn').style.display='none';
+}
+// attendee mode hides the .org-only controls; ?admin or organizerTools:true keeps them
+function setModes(sign){
+  const attendee=!(Q.has('admin')||CFG.organizerTools===true)&&!!(sign.feed||sign.room||CFG.feed);
+  document.body.classList.toggle('attendee',attendee); document.body.classList.toggle('embed',EMBED);
+}
+async function fetchVenue(u,r,signal){
+  try{ return JSON.parse(await fetchFeed(u,r,signal)); }catch(e){ throw new Error('venue file: '+e.message); }
+}
+// a feed plus its optional venue overlay; a broken venue file doesn't stop the schedule from loading
+async function fetchSchedule(feed,relay,venue,signal){
+  const [text,v]=await Promise.all([fetchFeed(feed,relay,signal),venue?fetchVenue(venue,relay,signal).catch(e=>{console.warn('RoomHop: '+e.message);return null;}):null]);
+  let d=parseAny(text);
+  if(v) try{ d=applyVenue(d,v); }catch(e){ console.warn('RoomHop: venue file ignored: '+e.message); }
+  d.source={feed,relay:relay||null,fetchedAt:Date.now(),...(venue?{venue}:{})};
+  return d;
+}
+// config feed: used instead of the demo, and replaces an older config feed, but never a schedule the person loaded
+async function loadConfigFeed(){
+  const s=data.source||{};
+  if(s.feed===CFG.feed&&(s.venue||null)===(CFG.venue||null)){ handleHash(); return; }
+  if(!data.name.startsWith('Demo')&&!s.config){ handleHash(); return; }
+  try{
+    const d=await fetchSchedule(CFG.feed,CFG.relay||DEFAULT_RELAY||null,CFG.venue||null); d.source.config=true;
+    data=d; saveData(d); S.hidden.clear(); store.set('hidden',[]); FRESH=true; boot(); handleHash();
+  }catch(e){
+    openSheet(`<h2>Couldn't load the schedule</h2><div class="note">This site's schedule at ${esc(CFG.feed)} couldn't be loaded (${esc(e.message)}). Check your connection and reload the page.</div><div class="row"><button class="btn" id="closeS">Close</button></div>`);
+    $('closeS').onclick=closeSheet;
+  }
+}
+// embedded: load the linked feed without asking and keep it in the URL (nothing is stored, so a reload needs it)
+async function loadEmbedFeed(sign){
+  try{ data=await fetchSchedule(sign.feed,sign.relay,sign.venue); boot(); handleHash(); }
+  catch(e){ $('strip').innerHTML=`<div class="empty">Couldn't load the schedule (${esc(e.message)}).</div>`; }
+}
+// QR density: past ~300 characters the code gets too fine to scan from across a hallway
+function signLenNote(url){
+  const n=url.length;
+  return n>300?`<div class="warnbox sglen" data-len="${n}">⚠ Long link (${n} characters): this QR code is dense and harder to scan. Use a shorter page link or feed URL.</div>`
+    :`<div class="note sglen" data-len="${n}">QR link: ${n} characters</div>`;
+}
+// every room's sign, one per printed page (see @media print in index.html)
+async function printAllSigns(base,copy){
+  let box=$('printSigns'); if(!box){ box=document.createElement('div'); box.id='printSigns'; box.className='print-only'; document.body.appendChild(box); }
+  box.innerHTML=data.venues.map(v=>`<div class="psign"><img alt="QR sign for ${esc(v.name)}" src="${signImage(v,base,copy)}"></div>`).join('');
+  await Promise.all([...box.querySelectorAll('img')].map(i=>i.decode?i.decode().catch(()=>{}):null));
+  document.body.classList.add('printing');
+  try{ window.print(); }catch(e){}
+}
+window.addEventListener('afterprint',()=>document.body.classList.remove('printing'));
+
 /* ---------- boot ---------- */
 function boot(){
   loadZones();
-  S.here=store.get('here:'+data.name,null); if(S.here&&!venueById(S.here)) S.here=null;
+  S.here=evGet('here:',null); if(S.here&&!venueById(S.here)) S.here=null;
   S.follow=true; S.anchorReal=Date.now(); S.anchorVirt=Date.now(); S.speed=1;
   S.dayAuto=true; pickDay(true);
-  S.stars=loadStars(store,data.name);
-  S.blocks=store.get(blockKey(),null);
+  S.stars=loadStars(store,evKey(),data.name);
+  S.blocks=data.source?.feed?evGet('blocks:',null):store.get(blockKey(),null);
   if(!S.blocks){ S.blocks=[]; if(data.name.startsWith('Demo')) seedDemoAgenda(); }
   renderAll();
 }
@@ -982,9 +1181,9 @@ function seedDemoAgenda(){
 async function loadFromSign(sign){
   openSheet(`<h2>Loading the schedule…</h2><div class="note">Fetching the schedule ${sign.room?'for the room sign you scanned':'from the link you opened'}.</div>`);
   try{
-    const d=parseAny(await fetchFeed(sign.feed,sign.relay)); d.source={feed:sign.feed,relay:sign.relay};
-    if(sign.tz&&validZone(sign.tz)&&!validZone(d.tz)) saveZoneSettings(store,d.name,{...loadZoneSettings(store,d.name),event:sign.tz});
-    data=d; store.set('data',d); S.hidden.clear(); store.set('hidden',[]); boot(); closeSheet();
+    const d=await fetchSchedule(sign.feed,sign.relay,sign.venue);
+    if(sign.tz&&validZone(sign.tz)&&!validZone(d.tz)) saveZoneSettings(store,sign.feed,{...loadZoneSettings(store,sign.feed,d.name),event:sign.tz},d.name);
+    data=d; saveData(d); S.hidden.clear(); store.set('hidden',[]); FRESH=true; boot(); closeSheet();
     history.replaceState(null,'',withoutFeed(location.href)); handleHash();
   }catch(e){
     openSheet(`<h2>Couldn't load the schedule</h2><div class="note">This ${sign.room?'room sign':'link'} points to a schedule at ${esc(sign.feed)}, but it couldn't be loaded (${esc(e.message)}). Check your connection and reload the page, or use “Load schedule…”.</div><div class="row"><button class="btn" id="closeS">Close</button></div>`);
@@ -992,20 +1191,32 @@ async function loadFromSign(sign){
   }
 }
 function signFeed(sign){
-  if(data.source&&data.source.feed===sign.feed){ history.replaceState(null,'',withoutFeed(location.href)); handleHash(); return; }
-  if(data.name.startsWith('Demo')){ loadFromSign(sign); return; }
-  let host=sign.feed; try{host=new URL(sign.feed).hostname;}catch(e){}
-  openSheet(`<h2>Load this ${sign.room?"sign's":'shared'} schedule?</h2><div class="note">This ${sign.room?'room sign':'link'} uses a schedule from <b>${esc(host)}</b>. Loading it replaces “${esc(data.name)}” on this device. Your stars and blocks are kept per schedule.</div>
+  if(data.source&&data.source.feed===sign.feed&&(data.source.venue||null)===sign.venue){ history.replaceState(null,'',withoutFeed(location.href)); handleHash(); refreshFeed({force:true}); return; }
+  // a relay that isn't RoomHop's sees (and could change) the schedule, so always ask and name it
+  const odd=sign.relay&&sign.relay!==DEFAULT_RELAY, hostOf=u=>{try{return new URL(u).hostname;}catch(e){return u;}};
+  if(data.name.startsWith('Demo')&&!odd){ loadFromSign(sign); return; }
+  const host=hostOf(sign.feed);
+  openSheet(`<h2>Load this ${sign.room?"sign's":'shared'} schedule?</h2><div class="note">This ${sign.room?'room sign':'link'} uses a schedule from <b>${esc(host)}</b>${odd?`, fetched through the relay <b id="sfRelay">${esc(hostOf(sign.relay))}</b>, which isn't RoomHop's. That server sees the schedule and could change it`:''}. Loading it replaces “${esc(data.name)}” on this device. Your stars and blocks are kept per schedule.</div>
     <div class="row"><button class="btn on" id="sfGo">Load it</button><button class="btn" id="closeS">Keep “${esc(data.name)}”</button></div>`);
   $('sfGo').onclick=()=>loadFromSign(sign);
   $('closeS').onclick=()=>{closeSheet(); history.replaceState(null,'',withoutFeed(location.href)); handleHash();};
 }
-data = store.get('data',null) || demoData();
+CFG=await loadConfig(); applyConfig(CFG);
+data = store.get('data',null);
+// a damaged or foreign save shouldn't stop the app: fall back to the demo
+if(!data||typeof data.name!=='string'||!Array.isArray(data.sessions)||!Array.isArray(data.venues)||!data.buildings||typeof data.buildings!=='object') data=demoData();
 if(data.name.startsWith('Demo')) data=demoData();  // always regenerate demo around today
-boot();
+boot(); refreshFeed();
 const sign=parseSignLink(location.href);
-if(sign.feed) signFeed(sign); else handleHash();
-// a first scan should land on the room, not the tour; it's still offered on the next visit
-if(location.hash==='#tour' || (!sign.feed && !store.get('seenTour',false))){ store.set('seenTour',true); tourIntro(); }
-setInterval(()=>tick(), 250);
+setModes(sign);
+if(sign.feed) EMBED?loadEmbedFeed(sign):signFeed(sign); else if(CFG.feed) loadConfigFeed(); else handleHash();
+// a first scan (or share link, or a self-hosted event's own page) should land on the schedule, not the tour;
+// it's still offered on the next plain visit
+const quietStart=sign.feed||sign.room||CFG.feed;
+if(!EMBED&&CFG.tour!==false&&(location.hash==='#tour' || (!quietStart && !store.get('seenTour',false)))){ store.set('seenTour',true); tourIntro(); }
+// 1 s is smooth at real time (a few px per minute); fast-forward needs 250 ms. Nothing runs while hidden.
+(function loop(){ setTimeout(loop,S.speed>1?250:1000); if(!document.hidden) tick(); })();
 window.addEventListener('resize',()=>tick());
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ tick(); refreshFeed(); } });
+window.addEventListener('online',()=>refreshFeed({force:true}));
+setInterval(()=>{ if(!document.hidden) refreshFeed(); },10*MIN);

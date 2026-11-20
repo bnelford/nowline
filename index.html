@@ -3,23 +3,39 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>NowLine — live conference timeline</title>
+<title>RoomHop — live conference timeline</title>
 <meta name="description" content="What's on now, what's next, and whether you'll make the walk to your next session. A live conference timeline for your phone.">
 <!-- link previews (Slack, Discord, social). Scrapers need an absolute image URL; forks can point it at their own copy. -->
-<meta property="og:title" content="NowLine — live conference timeline">
+<meta property="og:title" content="RoomHop — live conference timeline">
 <meta property="og:description" content="What's on now, what's next, and whether you'll make the walk to your next session.">
 <meta property="og:type" content="website">
-<meta property="og:image" content="https://bnelford.github.io/nowline/assets/brand/social-preview.png">
+<meta property="og:image" content="https://bnelford.github.io/roomhop/assets/brand/social-preview.png">
 <meta property="og:image:width" content="1280">
 <meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="RoomHop: What's on now. Where it is. Will you make the walk? Beside it, a phone showing the live conference timeline with a red now-line across the sessions.">
+<meta property="og:url" content="https://bnelford.github.io/roomhop/">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://bnelford.github.io/roomhop/assets/brand/social-preview.png">
+<!-- installable app (manifest.webmanifest) and offline support (sw.js, registered by src/sw-register.js) -->
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#0e1116">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="RoomHop">
+<script type="module" src="./src/sw-register.js"></script>
+<!-- the full mark blurs at tab size, so 16/32px get a simplified one (assets/brand/favicon-16.svg) -->
+<link rel="icon" href="./assets/brand/favicon-16.png" type="image/png" sizes="16x16">
+<link rel="icon" href="./assets/brand/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="icon" href="./assets/brand/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="./assets/brand/icon-192.png" type="image/png" sizes="192x192">
 <link rel="icon" href="./assets/brand/icon-512.png" type="image/png" sizes="512x512">
 <link rel="apple-touch-icon" href="./assets/brand/apple-touch-icon.png">
+<!-- optional self-host config (docs/self-host.md), requested now so it arrives alongside the modules; app.js waits briefly for it -->
+<script>window.ROOMHOP_CONFIG=fetch('roomhop.config.json',{cache:'no-cache'}).then(function(r){return r.ok?r.json():null}).catch(function(){return null});</script>
 <style>
 :root{
-  --bg:#0e1116;--panel:#161a22;--panel2:#1d2330;--line:#2a3140;--text:#e8ecf3;--dim:#8a93a6;--faint:#566074;
+  --bg:#0e1116;--panel:#161a22;--panel2:#1d2330;--line:#2a3140;--text:#e8ecf3;--dim:#8a93a6;--faint:#8a93a6;
   --now:#ff4d5e;--accent:#7cc4ff;--star:#ffc94d;
   --label:104px;--lane:62px;
 }
@@ -34,10 +50,19 @@ header{display:flex;align-items:center;gap:10px;padding:10px 12px 6px}
 .clock{font-variant-numeric:tabular-nums;font-weight:700;font-size:15px;padding:4px 8px;border-radius:8px;background:var(--panel2)}
 .clock.sim{background:#3a2a10;color:var(--star)}
 .tzlab{margin-left:-6px;border:0;background:transparent;color:var(--dim);font-size:11px;font-weight:600;padding:4px 2px;cursor:pointer;white-space:nowrap}
-.btn{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:6px 11px;cursor:pointer;white-space:nowrap}
+.fresh{color:var(--dim);font-size:11px;white-space:nowrap}
+.fresh.off{color:var(--star)}
+.toast{position:fixed;left:50%;top:calc(52px + env(safe-area-inset-top));transform:translateX(-50%);z-index:40;max-width:calc(100% - 32px);background:var(--panel2);border:1px solid var(--star);border-radius:12px;padding:10px 14px;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.4);display:none;cursor:pointer}
+.toast.show{display:block}
+.btn{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:6px 11px;cursor:pointer;white-space:nowrap;min-height:44px;display:inline-flex;align-items:center;justify-content:center;gap:4px}
 .btn.on{background:var(--accent);color:#06121e;border-color:var(--accent);font-weight:600}
 .btn.live.on{background:var(--now);border-color:var(--now);color:#fff}
-.icon{padding:6px 9px}
+.icon{padding:6px 9px;min-width:44px}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sel:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.strip,.card{position:relative}
 
 /* NOW / NEXT strip */
 .strip{display:flex;gap:8px;overflow-x:auto;padding:4px 12px 8px;scrollbar-width:none}
@@ -50,14 +75,16 @@ header{display:flex;align-items:center;gap:10px;padding:10px 12px 6px}
 .card .go{font-size:12px;margin-top:3px;color:var(--star)}
 .card .bar{height:3px;background:var(--line);border-radius:3px;margin-top:6px;overflow:hidden}
 .card .bar i{display:block;height:100%;background:var(--now)}
+.card.yours{border-left-color:var(--star);background:#1f1b10;border-color:#4a3e1c}
+.card.yours .k{color:var(--star)}
 .empty{color:var(--faint);padding:10px 2px;font-size:13px}
 
 /* controls */
-.controls{display:flex;gap:6px;align-items:center;overflow-x:auto;padding:0 12px 8px;scrollbar-width:none}
-.controls::-webkit-scrollbar{display:none}
-.sel{display:flex;align-items:center;gap:4px;background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:0 4px 0 10px;white-space:nowrap}
+.controls{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:0 12px 8px}
+.controls .sel{flex:1 1 140px;min-width:0}
+.sel{display:flex;align-items:center;gap:4px;background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:0 4px 0 10px;white-space:nowrap;min-height:44px;cursor:pointer}
 .sel small{color:var(--dim)}
-.sel select{background:transparent;border:0;padding:6px 4px;outline:none}
+.sel select{background:transparent;border:0;padding:6px 4px;outline:none;flex:1;min-width:0;max-width:100%;text-overflow:ellipsis;min-height:42px}
 .sel option{background:var(--panel)}
 
 /* timeline */
@@ -70,18 +97,21 @@ header{display:flex;align-items:center;gap:10px;padding:10px 12px 6px}
 .tick.half{border-left-style:dashed;border-color:#20262f}
 .tick.half span{display:none}
 .lane{display:flex;height:var(--lane);border-bottom:1px solid #1a1f29}
-.lane.far{opacity:.33}
+.lane.far{opacity:.7}
 .lab{position:sticky;left:0;z-index:5;width:var(--label);flex:0 0 var(--label);background:var(--panel);border-right:1px solid var(--line);padding:7px 8px 6px 10px;border-left:4px solid var(--c);cursor:pointer;display:flex;flex-direction:column;justify-content:center}
 .lab b{font-size:12.5px;line-height:1.15;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .lab small{font-size:10.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .track{position:relative;flex:0 0 auto;background-image:linear-gradient(to right,#1a1f29 1px,transparent 1px)}
 .s{position:absolute;top:5px;bottom:5px;border-radius:8px;padding:5px 7px;overflow:hidden;cursor:pointer;background:var(--panel2);border:1px solid var(--line);background:color-mix(in srgb,var(--c) 22%,var(--panel));border:1px solid color-mix(in srgb,var(--c) 45%,transparent);transition:opacity .2s}
 .s .t{font-size:12px;font-weight:600;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.s .m{font-size:10.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
-.s.past{opacity:.38;filter:saturate(.4)}
+.s .m{font-size:10.5px;color:#d3d9e3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.s.past{opacity:.7;filter:saturate(.4)}
 .s.live{border-color:var(--now);box-shadow:0 0 0 1px var(--now) inset}
 .s .prog{position:absolute;left:0;top:0;bottom:0;background:color-mix(in srgb,var(--now) 16%,transparent);pointer-events:none}
 .s .t,.s .m{position:relative}
+.s .t,.s .m,.b .t,.b .m{margin-left:var(--pin,0px)}
+.s,.b,.pb{scroll-margin:36px 8px 8px calc(var(--label) + 8px)}
+.s:focus-visible,.b:focus-visible,.pb:focus-visible{outline-offset:1px;z-index:3}
 .s.star::after{content:"★";position:absolute;right:5px;top:3px;color:var(--star);font-size:12px}
 .pastshade{position:absolute;top:28px;bottom:0;background:rgba(0,0,0,.18);pointer-events:none;z-index:1}
 .nowline{position:absolute;top:0;bottom:0;width:2px;background:var(--now);z-index:4;pointer-events:none;box-shadow:0 0 10px var(--now)}
@@ -93,8 +123,10 @@ header{display:flex;align-items:center;gap:10px;padding:10px 12px 6px}
 /* sheets */
 .scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:30;display:none}
 .scrim.show{display:block}
-.sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;background:var(--panel);border-top-left-radius:16px;border-top-right-radius:16px;border-top:1px solid var(--line);max-height:82vh;overflow:auto;padding:14px 16px calc(18px + env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .22s ease}
-.sheet.show{transform:none}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;background:var(--panel);border-top-left-radius:16px;border-top-right-radius:16px;border-top:1px solid var(--line);max-height:82vh;overflow:auto;padding:14px 16px calc(18px + env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .22s ease,visibility 0s linear .22s;visibility:hidden}
+.sheet.show{transform:none;visibility:visible;transition:transform .22s ease}
+.sheet:focus{outline:none}
+.sheet .row .sel{flex:0 1 auto}
 .sheet h2{margin:2px 0 6px;font-size:18px;line-height:1.25}
 .sheet h3{margin:14px 0 6px;font-size:13px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
 .sheet p{margin:6px 0;color:#c9d0dc}
@@ -103,7 +135,7 @@ header{display:flex;align-items:center;gap:10px;padding:10px 12px 6px}
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .grab{width:40px;height:4px;border-radius:4px;background:var(--line);margin:0 auto 10px}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
-.chip{border:1px solid var(--line);background:var(--panel2);border-radius:999px;padding:6px 10px;cursor:pointer;display:flex;align-items:center;gap:6px}
+.chip{border:1px solid var(--line);background:var(--panel2);border-radius:999px;padding:6px 12px;cursor:pointer;display:flex;align-items:center;gap:6px;min-height:44px}
 .chip i{width:9px;height:9px;border-radius:50%;background:var(--c)}
 .chip.off{opacity:.4;text-decoration:line-through}
 textarea{width:100%;min-height:150px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px;font:12px/1.4 ui-monospace,Menlo,monospace}
@@ -118,8 +150,8 @@ code{background:var(--bg);padding:1px 5px;border-radius:5px;font-size:12px}
 .lane.me .lab b{color:var(--star)}
 .b{position:absolute;border-radius:8px;padding:4px 7px;overflow:hidden;cursor:pointer;background:#3a2f12;border:1px solid var(--star);color:#ffe7a8}
 .b .t{font-size:12px;font-weight:700;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:relative}
-.b .m{font-size:10.5px;color:#d9c48a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:relative}
-.b.past{opacity:.38}
+.b .m{font-size:10.5px;color:#ead9a6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:relative}
+.b.past{opacity:.7}
 .b.live{box-shadow:0 0 0 1px var(--now) inset;border-color:var(--now)}
 .b .prog{position:absolute;left:0;top:0;bottom:0;background:rgba(255,77,94,.16);pointer-events:none}
 .lane.me .s{border-style:dashed}
@@ -129,6 +161,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:5px;font-size:12px}
 .ovl{position:absolute;top:0;bottom:0;background:repeating-linear-gradient(135deg,rgba(255,77,94,.28) 0 6px,transparent 6px 12px);pointer-events:none;z-index:2}
 .pb{position:absolute;bottom:1px;height:13px;border-radius:4px;background:repeating-linear-gradient(135deg,#3a2f12 0 6px,#2a220d 6px 12px);border:1px solid var(--star);color:#ffe7a8;font-size:9.5px;line-height:11px;padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;z-index:2}
 .track{cursor:copy}
+.addslot{position:absolute;top:50%;transform:translate(-50%,-50%);z-index:4;min-height:36px;padding:4px 10px;border-radius:999px;border:1px solid var(--star);background:#3a2f12;color:#ffe7a8;font-weight:700;font-size:12px;cursor:pointer;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.5)}
 .card.warn{border-color:var(--now);border-left-color:var(--now);background:#241318}
 .card.warn .k{color:#ff9aa4}
 .card.mine{border-left-color:var(--star)}
@@ -141,8 +174,8 @@ code{background:var(--bg);padding:1px 5px;border-radius:5px;font-size:12px}
 .okbox{background:#12241a;border:1px solid #2f6b47;border-radius:10px;padding:8px 10px;font-size:13px;color:#a8e6c0;margin-top:8px}
 
 /* map view */
-.viewsw{display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:2px}
-.viewsw button{border:0;background:transparent;border-radius:999px;padding:5px 11px;cursor:pointer;white-space:nowrap}
+.viewsw{display:flex;background:var(--panel2);box-shadow:inset 0 0 0 1px var(--line);border-radius:999px}
+.viewsw button{border:0;background:transparent;border-radius:999px;padding:5px 13px;cursor:pointer;white-space:nowrap;min-height:44px}
 .viewsw button.on{background:var(--text);color:var(--bg);font-weight:700}
 .mapwrap{flex:1;min-height:0;display:none;flex-direction:column;border-top:1px solid var(--line)}
 body.mapmode .mapwrap{display:flex}
@@ -151,11 +184,11 @@ body.mapmode .follow{display:none!important}
 .mapbox{position:relative;flex:1;min-height:200px;overflow:hidden;background:#0b0e13;touch-action:none}
 .mapbox svg{width:100%;height:100%;display:block;user-select:none;-webkit-user-select:none}
 .mapctl{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:6px}
-.mapctl .btn{width:38px;height:38px;padding:0;display:flex;align-items:center;justify-content:center;font-size:17px;background:rgba(29,35,48,.92)}
+.mapctl .btn{width:44px;height:44px;padding:0;display:flex;align-items:center;justify-content:center;font-size:17px;background:rgba(29,35,48,.92)}
 .maphint{position:absolute;left:10px;top:10px;right:60px;font-size:12px;color:var(--dim);background:rgba(14,17,22,.85);border:1px solid var(--line);border-radius:10px;padding:6px 9px}
 .maplist{max-height:34%;overflow:auto;border-top:1px solid var(--line);background:var(--panel);padding:6px 12px 12px}
 .maplist h3{margin:8px 0 6px;font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--dim)}
-.mrow{display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid #20262f;cursor:pointer}
+.mrow{display:flex;gap:10px;align-items:center;padding:7px 0;min-height:44px;border-bottom:1px solid #20262f;cursor:pointer}
 .mrow .wk{flex:0 0 46px;text-align:center;font-weight:800;font-variant-numeric:tabular-nums;font-size:15px}
 .mrow .wk small{display:block;font-size:9.5px;color:var(--dim);font-weight:500}
 .mrow .bd{flex:1;min-width:0}
@@ -167,9 +200,13 @@ body.mapmode .follow{display:none!important}
 .pulse{animation:pulse 1.6s ease-out infinite}
 @keyframes dash{to{stroke-dashoffset:-40}}
 .route{animation:dash 1s linear infinite}
+[data-room]:focus{outline:none}
+[data-room]:focus-visible .hit{stroke:var(--accent);stroke-width:3px;vector-effect:non-scaling-stroke}
 
 /* guided tour */
 .tourbtn{background:linear-gradient(135deg,#ff4d5e,#ff8a5c);border:0;color:#fff;font-weight:700;padding:6px 12px}
+.banner{display:flex;align-items:center;gap:8px;margin:0 12px 8px;padding:4px 4px 4px 12px;border:1px solid #5a2a32;background:#241318;border-radius:12px;font-size:13px}
+.banner span{flex:1;min-width:0}
 .spot{position:fixed;z-index:40;border-radius:12px;pointer-events:none;box-shadow:0 0 0 9999px rgba(5,7,12,.72),0 0 0 2px var(--now),0 0 24px rgba(255,77,94,.6);transition:all .45s cubic-bezier(.2,.8,.2,1)}
 .spot.none{left:50%!important;top:50%!important;width:0!important;height:0!important;box-shadow:0 0 0 9999px rgba(5,7,12,.82)}
 .cap{position:fixed;left:12px;right:12px;z-index:42;background:rgba(18,22,30,.97);border:1px solid var(--line);border-radius:14px;padding:12px 14px 10px;box-shadow:0 10px 30px rgba(0,0,0,.5);transition:top .35s,bottom .35s}
@@ -194,57 +231,99 @@ body.mapmode .follow{display:none!important}
 .scan .ph .ln{position:absolute;left:8%;right:8%;height:3px;background:var(--now);box-shadow:0 0 14px var(--now);animation:sweep 1.4s ease-in-out infinite alternate}
 .scan .ph .ok{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);background:#fff;color:#111;border-radius:12px;padding:8px 12px;font-size:12px;font-weight:600;white-space:nowrap;opacity:0;transition:opacity .3s}
 @keyframes sweep{from{top:18%}to{top:78%}}
+
+/* organizer: self-host logo, attendee + embed modes, print all signs */
+.logo{height:24px;max-width:120px;object-fit:contain}
+body.attendee .org-only,body.embed .org-only{display:none}
+body.embed header{display:none}
+.print-only{display:none}
+@media print{
+  @page{margin:12mm}
+  html,body{height:auto;background:#fff}
+  body.printing{display:block;padding:0}
+  body.printing>*:not(#printSigns){display:none!important}
+  body.printing #printSigns{display:block}
+  #printSigns .psign{page-break-after:always;break-after:page;page-break-inside:avoid;break-inside:avoid;text-align:center}
+  #printSigns .psign:last-child{page-break-after:auto;break-after:auto}
+  /* 3:4 sign; fits the printable area of both A4 and US Letter */
+  #printSigns img{display:inline-block;width:auto;height:auto;max-width:100%;max-height:240mm}
+}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{transition:none!important;scroll-behavior:auto!important}
+  .pulse,.route,.mess .pdf,.mess .q,.scan .ph .ln{animation:none!important}
+}
 </style>
 </head>
 <body>
 <header>
-  <div class="brand">Now<span>Line</span></div>
-  <div class="conf" id="confName"></div>
-  <button class="btn tourbtn" id="tourBtn">▶ Tour</button>
+  <div class="brand">Room<span>Hop</span></div>
+  <div class="conf" id="confName"></div><div class="fresh" id="fresh"></div>
   <div class="clock" id="clock">--:--</div><button class="tzlab" id="tzLab" style="display:none"></button>
 </header>
 
-<div class="strip" id="strip"></div>
+<div class="banner" id="tourBanner" role="region" aria-label="Welcome" hidden><span>New here?</span><button class="btn tourbtn" id="tGo">Take the 1-minute tour</button><button class="btn icon" id="tNo" aria-label="Dismiss">✕</button></div>
+
+<div class="strip" id="strip" role="region" aria-label="Now and next" aria-live="polite"></div>
 
 <div class="controls">
-  <div class="viewsw"><button id="vTl" class="on">Timeline</button><button id="vMap">Map</button></div>
-  <div class="sel" id="daySelWrap" style="display:none"><small>Day</small><select id="daySel"></select></div>
-  <button class="btn live on" id="liveBtn">● Live</button>
-  <button class="btn" id="demoBtn" title="Fast-forward time 60×">▶ 60×</button>
-  <button class="btn icon" id="backBtn" title="Back 30 min">−30m</button>
-  <button class="btn icon" id="fwdBtn" title="Forward 30 min">+30m</button>
-  <div class="sel"><small>I'm at</small><select id="hereSel"></select></div>
-  <div class="sel"><small>Show</small><select id="radiusSel">
-    <option value="all">Everything</option>
-    <option value="5">≤ 5 min walk</option>
-    <option value="10">≤ 10 min walk</option>
-    <option value="same">This building</option>
-  </select></div>
+  <div class="viewsw" role="group" aria-label="View"><button id="vTl" class="on" aria-pressed="true">Timeline</button><button id="vMap" aria-pressed="false">Map</button></div>
+  <button class="btn" id="starBtn" aria-pressed="false">★ Mine</button>
   <button class="btn" id="shareBtn">Share…</button>
-  <button class="btn" id="addBlockBtn">+ Block</button>
-  <button class="btn" id="starBtn">★ Mine</button>
-  <button class="btn" id="lanesBtn">Rooms…</button>
-  <button class="btn icon" id="zoomOut">−</button>
-  <button class="btn icon" id="zoomIn">+</button>
-  <button class="btn" id="signsBtn">Room signs…</button>
-  <button class="btn" id="tzBtn">Time zone…</button>
-  <button class="btn" id="importBtn">Load schedule…</button>
+  <button class="btn" id="moreBtn" aria-haspopup="dialog" aria-label="More">⋯ More</button>
+  <button class="btn live on" id="backLive" hidden>● Back to live</button>
+  <label class="sel" id="daySelWrap" style="display:none"><small>Day</small><select id="daySel"></select></label>
+  <label class="sel"><small>I'm at</small><select id="hereSel"></select></label>
+</div>
+
+<!-- organizer and power-user controls: static so their ids and handlers exist from the start -->
+<div class="sheet" id="moreSheet" role="dialog" aria-modal="true" aria-labelledby="moreTtl" tabindex="-1">
+  <div class="grab"></div><h2 id="moreTtl">More</h2>
+  <h3>Time</h3>
+  <div class="row" style="margin-top:0">
+    <button class="btn live on" id="liveBtn">● Live</button>
+    <button class="btn org-only" id="demoBtn" title="Fast-forward time 60×">▶ 60×</button>
+    <button class="btn icon org-only" id="backBtn" title="Back 30 min" aria-label="Back 30 minutes">−30m</button>
+    <button class="btn icon org-only" id="fwdBtn" title="Forward 30 min" aria-label="Forward 30 minutes">+30m</button>
+  </div>
+  <h3>View</h3>
+  <div class="row" style="margin-top:0">
+    <label class="sel"><small>Show</small><select id="radiusSel">
+      <option value="all">Everything</option>
+      <option value="5">≤ 5 min walk</option>
+      <option value="10">≤ 10 min walk</option>
+      <option value="same">This building</option>
+    </select></label>
+    <button class="btn" id="lanesBtn">Rooms…</button>
+    <button class="btn icon" id="zoomOut" aria-label="Zoom out">−</button>
+    <button class="btn icon" id="zoomIn" aria-label="Zoom in">+</button>
+    <button class="btn" id="tzBtn">Time zone…</button>
+  </div>
+  <h3>Your schedule</h3>
+  <div class="row" style="margin-top:0"><button class="btn" id="addBlockBtn">+ Block</button></div>
+  <h3>Event</h3>
+  <div class="row" style="margin-top:0">
+    <button class="btn org-only" id="importBtn">Load schedule…</button>
+    <button class="btn org-only" id="signsBtn">Room signs…</button>
+    <button class="btn tourbtn" id="tourBtn">▶ Tour</button>
+  </div>
+  <div class="row"><button class="btn" id="moreClose">Close</button></div>
 </div>
 
 <div class="tl" id="tl"><div class="inner" id="inner"></div></div>
 <div class="mapwrap" id="mapWrap">
   <div class="mapbox" id="mapBox"><svg id="mapSvg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice"></svg>
     <div class="maphint" id="mapHint"></div>
-    <div class="mapctl"><button class="btn" id="mzIn">+</button><button class="btn" id="mzOut">−</button><button class="btn" id="mzMe" title="Center on me">◎</button></div>
+    <div class="mapctl"><button class="btn" id="mzIn" aria-label="Zoom in">+</button><button class="btn" id="mzOut" aria-label="Zoom out">−</button><button class="btn" id="mzMe" title="Center on me" aria-label="Center on me">◎</button></div>
   </div>
   <div class="maplist" id="mapList"></div>
 </div>
 <button class="follow" id="followBtn">⦿ Jump to now</button>
 
 <div class="scrim" id="scrim"></div>
-<div class="sheet" id="sheet"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" tabindex="-1"></div>
+<div class="toast" id="toast" role="status"></div>
 
-<!-- Served over http(s): ES modules don't load from file:// in most browsers. See README "Quick start". -->
+<!-- Served over http(s): ES modules don't load from file:// in most browsers. See README "Development". -->
 <script src="vendor/qrcode.js"></script>
 <script type="module" src="src/app.js"></script>
 </body>

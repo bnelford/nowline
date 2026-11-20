@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="512" height="512">
+  <!-- Maskable source for icon-maskable-512.png: full-bleed background (no rounded corners) and mark.svg's
+       artwork scaled to 80% so the flag stays inside the 40%-radius safe zone that launchers never crop. -->
+  <rect width="64" height="64" fill="#0e1116"/>
+  <g transform="translate(32 32) scale(.8) translate(-32 -32)">
+    <rect x="10" y="34" width="14" height="7" rx="3.5" fill="#566074"/>
+    <rect x="38" y="34" width="16" height="7" rx="3.5" fill="#7cc4ff"/>
+    <rect x="28.5" y="18" width="5" height="38" rx="2.5" fill="#ff4d5e"/>
+    <path d="M22.5 7h17A2.5 2.5 0 0 1 42 9.5v4.4a2.5 2.5 0 0 1-.9 1.9l-8.5 7.1a2.5 2.5 0 0 1-3.2 0l-8.5-7.1a2.5 2.5 0 0 1-.9-1.9V9.5A2.5 2.5 0 0 1 22.5 7z" fill="#ff4d5e"/>
+  </g>
+</svg>

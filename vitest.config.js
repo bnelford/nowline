@@ -10,7 +10,7 @@ export default defineConfig({
     // `npm run test:coverage`. json-summary feeds the coverage badge (scripts/badges.js).
     coverage: {
       provider: 'v8',
-      include: ['src/**/*.js', 'nowline-feed-relay.js'],
+      include: ['src/**/*.js', 'roomhop-relay.js'],
       reporter: ['text', 'json-summary'],
     },
   },

@@ -1,10 +1,10 @@
 # Feed relay
 
 Sched, Sessionize and pretalx don't send CORS headers, so a browser can't fetch their feeds
-directly. [`nowline-feed-relay.js`](../nowline-feed-relay.js) is a small Cloudflare Worker that does
+directly. [`roomhop-relay.js`](../roomhop-relay.js) is a small Cloudflare Worker that does
 that one job.
 
-NowLine uses a public instance, `https://nowline-relay.nelfordbc.workers.dev/?url=`, whenever the
+RoomHop uses a public instance, `https://nowline-relay.nelfordbc.workers.dev/?url=`, whenever the
 **Relay URL** field is left empty. It runs the default allow-list below, so a self-hosted pretalx or any
 other host needs your own deployment. The relay used for a fetch is carried in share links and room
 signs, so they keep working even if the default changes later.
@@ -27,10 +27,10 @@ How it works:
 
 ```sh
 npx wrangler login
-npx wrangler deploy        # uses wrangler.toml → worker "nowline-relay"
+npx wrangler deploy        # uses wrangler.toml → worker "roomhop-relay"
 ```
 
-Then paste `https://nowline-relay.<your-subdomain>.workers.dev/?url=` into the **Relay URL** field
+Then paste `https://<name in wrangler.toml>.<your-subdomain>.workers.dev/?url=` into the **Relay URL** field
 under **Load schedule…**.
 
 > The relay checks hostnames, not resolved IP addresses. An allowed host's DNS is trusted as-is.

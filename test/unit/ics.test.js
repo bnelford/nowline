@@ -24,8 +24,13 @@ describe('icsTime / zonedToUtc', () => {
   it('reads floating times in the device zone (UTC under test)', () => {
     expect(icsTime('20261112T090000', '')).toBe(utc(2026, 10, 12, 9, 0));
   });
-  it('falls back to device zone for unknown zone names (e.g. Windows names)', () => {
-    expect(icsTime('20261112T090000', ';TZID=Pacific Standard Time')).toBe(utc(2026, 10, 12, 9, 0));
+  it('falls back to device zone for unknown zone names', () => {
+    expect(icsTime('20261112T090000', ';TZID=Nowhere Standard Time')).toBe(utc(2026, 10, 12, 9, 0));
+  });
+  it('maps common Windows zone names to IANA', () => {
+    expect(icsTime('20261112T090000', ';TZID=Pacific Standard Time')).toBe(utc(2026, 10, 12, 17, 0));
+    expect(icsTime('20261112T090000', ';TZID="W. Europe Standard Time"')).toBe(utc(2026, 10, 12, 8, 0));
+    expect(icsTime('20261112T090000', ';TZID=India Standard Time')).toBe(utc(2026, 10, 12, 3, 30));
   });
   it('handles DST, half-hour offsets and Europe', () => {
     expect(zonedToUtc([2026, 6, 1, 12, 0, 0], 'America/Los_Angeles')).toBe(utc(2026, 6, 1, 19, 0)); // PDT
@@ -49,12 +54,13 @@ describe('icsDur', () => {
 describe('parseICSEvents (Sched-like fixture)', () => {
   const evs = parseICSEvents(fixture);
 
-  it('reads X-WR-CALNAME and skips all-day events', () => {
+  it('reads X-WR-CALNAME, skips all-day events and drops a repeated UID (first wins)', () => {
     expect(evs.cal.name).toBe('FixtureCon 2026');
     expect(evs.map((e) => e.uid)).toEqual([
       'fx-001@fixturecon.sched.com', 'fx-002@fixturecon.sched.com', 'fx-003@fixturecon.sched.com',
-      'fx-001@fixturecon.sched.com', 'fx-005@fixturecon.sched.com', 'fx-006@fixturecon.sched.com',
+      'fx-005@fixturecon.sched.com', 'fx-006@fixturecon.sched.com',
     ]);
+    expect(evs[0].title).not.toMatch(/duplicate/);
   });
   it('unfolds lines and unescapes text', () => {
     expect(evs[0].notes).toBe(
@@ -159,5 +165,64 @@ describe('parseICS_legacy (unused)', () => {
     expect(legacy[0].start).toBe(utc(2026, 10, 12, 9, 0));        // wall clock read as device-local, not Los Angeles
     expect(parseICSEvents(fixture)[0].start).toBe(utc(2026, 10, 12, 17, 0));
     expect(legacy[1].notes).toBe('Reminder');                     // the VALARM DESCRIPTION overwrote the event's
+  });
+});
+
+const cal = (...ev) => 'BEGIN:VCALENDAR\n' + ev.map((e) => 'BEGIN:VEVENT\n' + e.join('\n') + '\nEND:VEVENT').join('\n') + '\nEND:VCALENDAR';
+
+describe('X-WR-TIMEZONE with other DTSTART params', () => {
+  it('applies when DTSTART has params but no TZID (VALUE=DATE-TIME)', () => {
+    const t = 'BEGIN:VCALENDAR\nX-WR-TIMEZONE:Europe/Brussels\nBEGIN:VEVENT\nUID:a\nSUMMARY:x\nDTSTART;VALUE=DATE-TIME:20261112T100000\nDTEND;VALUE=DATE-TIME:20261112T110000\nEND:VEVENT\nEND:VCALENDAR';
+    const [e] = parseICSEvents(t);
+    expect(e.start).toBe(utc(2026, 10, 12, 9, 0));
+    expect(e.fl).toBeUndefined();
+  });
+  it("doesn't override an explicit TZID", () => {
+    const t = 'BEGIN:VCALENDAR\nX-WR-TIMEZONE:Europe/Brussels\nBEGIN:VEVENT\nUID:a\nSUMMARY:x\nDTSTART;VALUE=DATE-TIME;TZID=Asia/Tokyo:20261112T100000\nDTEND;TZID=Asia/Tokyo:20261112T110000\nEND:VEVENT\nEND:VCALENDAR';
+    expect(parseICSEvents(t)[0].start).toBe(utc(2026, 10, 12, 1, 0));
+  });
+});
+
+describe('recurrence (RRULE / EXDATE / RECURRENCE-ID)', () => {
+  const LA = ';TZID=America/Los_Angeles';
+  const base = ['UID:r1', 'SUMMARY:Standup', 'DTSTART' + LA + ':20261030T090000', 'DTEND' + LA + ':20261030T093000'];
+  it('DAILY with COUNT, stepping in the wall clock across the DST change', () => {
+    const evs = parseICSEvents(cal([...base, 'RRULE:FREQ=DAILY;COUNT=4']));
+    expect(evs.map((e) => e.start)).toEqual([
+      utc(2026, 9, 30, 16, 0), utc(2026, 9, 31, 16, 0), utc(2026, 10, 1, 17, 0), utc(2026, 10, 2, 17, 0),   // DST ends Nov 1
+    ]);
+    expect(evs.every((e) => e.end - e.start === 30 * MIN)).toBe(true);
+    expect(new Set(evs.map((e) => e.id)).size).toBe(4);
+  });
+  it('WEEKLY with INTERVAL and UNTIL (inclusive)', () => {
+    const evs = parseICSEvents(cal([...base, 'RRULE:FREQ=WEEKLY;INTERVAL=2;UNTIL=20261127T170000Z']));
+    expect(evs.map((e) => e.start)).toEqual([utc(2026, 9, 30, 16, 0), utc(2026, 10, 13, 17, 0), utc(2026, 10, 27, 17, 0)]);
+  });
+  it('date-only UNTIL includes that whole day', () => {
+    expect(parseICSEvents(cal([...base, 'RRULE:FREQ=DAILY;UNTIL=20261031']))).toHaveLength(2);
+  });
+  it('EXDATE removes instances (COUNT still counts them)', () => {
+    const evs = parseICSEvents(cal([...base, 'RRULE:FREQ=DAILY;COUNT=4', 'EXDATE' + LA + ':20261031T090000,20261102T090000']));
+    expect(evs.map((e) => e.start)).toEqual([utc(2026, 9, 30, 16, 0), utc(2026, 10, 1, 17, 0)]);
+  });
+  it('a RECURRENCE-ID override replaces its instance, keeping its id; a cancelled one removes it', () => {
+    const evs = parseICSEvents(cal(
+      ['UID:r1', 'RECURRENCE-ID' + LA + ':20261031T090000', 'SUMMARY:Standup (moved)', 'DTSTART' + LA + ':20261031T110000', 'DTEND' + LA + ':20261031T113000'],
+      [...base, 'RRULE:FREQ=DAILY;COUNT=3'],
+      ['UID:r1', 'RECURRENCE-ID' + LA + ':20261101T090000', 'STATUS:CANCELLED', 'SUMMARY:Standup', 'DTSTART' + LA + ':20261101T090000', 'DTEND' + LA + ':20261101T093000'],
+    ));
+    expect(evs.map((e) => [e.title, e.start])).toEqual([['Standup', utc(2026, 9, 30, 16, 0)], ['Standup (moved)', utc(2026, 9, 31, 18, 0)]]);
+    expect(evs[1].id).toBe('r1@' + utc(2026, 9, 31, 16, 0));
+  });
+  it('scheduleFromICS keeps every instance as its own session', () => {
+    const d = scheduleFromICS(cal([...base, 'LOCATION:Room 1', 'RRULE:FREQ=DAILY;COUNT=3']));
+    expect(d.sessions).toHaveLength(3);
+    expect(d.tz).toBe('America/Los_Angeles');
+  });
+  it('unsupported frequencies keep the first instance', () => {
+    expect(parseICSEvents(cal([...base, 'RRULE:FREQ=MONTHLY;COUNT=3']))).toHaveLength(1);
+  });
+  it('an unbounded rule is capped', () => {
+    expect(parseICSEvents(cal([...base, 'RRULE:FREQ=DAILY'])).length).toBe(1000);
   });
 });
