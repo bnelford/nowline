@@ -100,6 +100,31 @@ function span(){
   return {start:floorHour(st,Z.display), end:floorHour(en,Z.display)+HOUR};
 }
 function relLabel(ms){const m=Math.round(ms/MIN); if(m<60) return m+' min'; return Math.floor(m/60)+'h '+(m%60? (m%60)+'m':'')}
+// a time on another day than "now" gets its weekday ("Sat 9:00 AM"), so multi-day schedules read unambiguously
+const fmtW=t=>(dayKey(t)!==dayKey(now())?new Intl.DateTimeFormat([],{weekday:'short',timeZone:Z.display}).format(new Date(t))+' ':'')+fmt(t);
+const RB='role="button" tabindex="0"';   // keyboard-activatable (Enter/Space, see the keydown handler)
+// re-rendering a container drops keyboard focus: put it back on the same item, found by its data key
+function keepFocus(el,render){
+  const a=document.activeElement, k=a&&a!==el&&el.contains(a)&&['data-id','data-block','data-room','data-maproom','data-venue'].find(x=>a.hasAttribute(x)), v=k&&a.getAttribute(k);
+  render();
+  if(k&&!el.contains(document.activeElement)){const n=el.querySelector(`[${k}="${CSS.escape(v)}"]`);if(n)n.focus({preventScroll:true});}
+}
+// an aria-live region: only re-render (and so re-announce) when its text changes. Ticking bits are marked .tk
+// (aria-hidden) and updated in place, so a counter going from 12 to 11 min isn't read out every few seconds.
+function patchLive(el,h){
+  const tp=document.createElement('div'); tp.innerHTML=h;
+  const said=n=>{const c=n.cloneNode(true);c.querySelectorAll('.tk').forEach(x=>x.remove());return c.innerHTML;};
+  if(said(tp)!==said(el)){keepFocus(el,()=>el.innerHTML=h);return;}
+  const a=el.querySelectorAll('.tk'); tp.querySelectorAll('.tk').forEach((n,i)=>{if(a[i]&&!a[i].isEqualNode(n)) a[i].replaceWith(n);});
+}
+// a block that starts off-screen under the sticky room label keeps its title readable at the visible left edge
+function pinTitles(){
+  const sl=$('tl').scrollLeft;
+  document.querySelectorAll('#inner .s,#inner .b').forEach(el=>{
+    const l=parseFloat(el.style.left), w=el.offsetWidth, pin=sl>l&&sl<l+w?Math.min(sl-l,Math.max(0,w-40)):0;
+    if(pin) el.style.setProperty('--pin',pin+'px'); else if(el.style.getPropertyValue('--pin')) el.style.removeProperty('--pin');
+  });
+}
 
 /* ---------- render timeline (structure) ---------- */
 let SP, X;  // span + x() mapper
@@ -123,19 +148,19 @@ function renderTimeline(){
     h+=`<div class="track" data-venue="${esc(v.id)}" style="width:${W}px;background-size:${30*S.ppm}px 100%">`;
     for(const s of daySessions().filter(s=>s.venue===v.id && (!S.starOnly||S.stars.has(s.id)))){
       const l=X(s.start), wd=Math.max(X(s.end)-l-3,8);
-      h+=`<div class="s${S.stars.has(s.id)?' star':''}" data-id="${esc(s.id)}" data-st="${s.start}" data-en="${s.end}" style="left:${l}px;width:${wd}px;--c:${v.color}"><div class="prog"></div><div class="t">${esc(s.title)}</div><div class="m">${fmt(s.start)}–${fmt(s.end)}${s.speakers.length?' · '+esc(s.speakers.join(', ')):''}</div></div>`;
+      h+=`<div class="s${S.stars.has(s.id)?' star':''}" ${RB} data-id="${esc(s.id)}" data-st="${s.start}" data-en="${s.end}" style="left:${l}px;width:${wd}px;--c:${v.color}"><div class="prog"></div><div class="t">${esc(s.title)}</div><div class="m">${fmt(s.start)}–${fmt(s.end)}${s.speakers.length?' · '+esc(s.speakers.join(', ')):''}</div></div>`;
     }
     // your own blocks anchored in/next to this room show as a striped band along the bottom
     for(const b of S.blocks.filter(b=>b.venue===v.id)){
       const l=X(b.start), wd=Math.max(X(b.end)-l-3,8);
-      h+=`<div class="pb" data-block="${esc(b.id)}" style="left:${l}px;width:${wd}px">👤 ${esc(b.title)}${b.place?' · '+esc(b.place):''}</div>`;
+      h+=`<div class="pb" ${RB} data-block="${esc(b.id)}" style="left:${l}px;width:${wd}px">👤 ${esc(b.title)}${b.place?' · '+esc(b.place):''}</div>`;
     }
     h+=`</div></div>`;
   }
   if(!vs.length) h+=`<div class="empty" style="padding:20px">No rooms to show. ${S.starOnly?'Star some sessions first, or turn off “★ Mine”.':'Check “Rooms…”.'}</div>`;
   h+=`<div class="pastshade" id="shade" style="left:${lw}px"></div><div class="nowline" id="nowline"><div class="tag" id="nowtag"></div><div class="dot"></div></div>`;
-  inner.innerHTML=h;
-  tick(true);
+  keepFocus(inner,()=>inner.innerHTML=h);
+  tick(true); pinTitles();
 }
 
 function renderMeLane(W){
@@ -143,15 +168,15 @@ function renderMeLane(W){
   const rows=[]; items.forEach(it=>{let r=rows.findIndex(end=>end<=it.start); if(r<0){r=rows.length;rows.push(0);} rows[r]=it.end; it.row=Math.min(r,2);});
   const n=Math.max(1,Math.min(rows.length,3)), rowH=n===1?50:(n===2?34:28), laneH=n*rowH+14;
   const issues=agendaIssues(items), bad=issues.filter(c=>c.type==='overlap'||c.bad).length;
-  let h=`<div class="lane me" style="height:${laneH}px"><div class="lab" id="meLab"><b>★ Me</b><small>${items.length?items.length+' item'+(items.length>1?'s':''):'tap a slot →'}${bad?' · ⚠ '+bad:''}</small></div>`;
+  let h=`<div class="lane me" style="height:${laneH}px"><div class="lab" id="meLab" ${RB} aria-label="My agenda"><b>★ Me</b><small>${items.length?items.length+' item'+(items.length>1?'s':''):'tap a slot →'}${bad?' · ⚠ '+bad:''}</small></div>`;
   h+=`<div class="track" data-venue="${esc(S.here||'')}" data-me="1" style="width:${W}px;background-size:${30*S.ppm}px 100%">`;
   for(const it of items){
     const l=X(it.start), wd=Math.max(X(it.end)-l-3,8), top=5+it.row*rowH, ht=rowH-4;
     if(it.kind==='block'){
-      h+=`<div class="b" data-block="${esc(it.id)}" data-st="${it.start}" data-en="${it.end}" style="left:${l}px;width:${wd}px;top:${top}px;height:${ht}px"><div class="prog"></div><div class="t">👤 ${esc(it.title)}</div>${n<3?`<div class="m">${fmt(it.start)}–${fmt(it.end)} · ${esc(placeLabel(it))}</div>`:''}</div>`;
+      h+=`<div class="b" ${RB} data-block="${esc(it.id)}" data-st="${it.start}" data-en="${it.end}" style="left:${l}px;width:${wd}px;top:${top}px;height:${ht}px"><div class="prog"></div><div class="t">👤 ${esc(it.title)}</div>${n<3?`<div class="m">${fmt(it.start)}–${fmt(it.end)} · ${esc(placeLabel(it))}</div>`:''}</div>`;
     } else {
       const v=venueById(it.venue);
-      h+=`<div class="s" data-id="${esc(it.id)}" data-st="${it.start}" data-en="${it.end}" style="left:${l}px;width:${wd}px;top:${top}px;height:${ht}px;bottom:auto;--c:${v.color}"><div class="prog"></div><div class="t" style="-webkit-line-clamp:1">${esc(it.title)}</div>${n<3?`<div class="m">${esc(v.name)}</div>`:''}</div>`;
+      h+=`<div class="s" ${RB} data-id="${esc(it.id)}" data-st="${it.start}" data-en="${it.end}" style="left:${l}px;width:${wd}px;top:${top}px;height:${ht}px;bottom:auto;--c:${v.color}"><div class="prog"></div><div class="t" style="-webkit-line-clamp:1">${esc(it.title)}</div>${n<3?`<div class="m">${esc(v.name)}</div>`:''}</div>`;
     }
   }
   for(const c of issues){
@@ -203,34 +228,46 @@ function renderStrip(){
   const vis=new Set(visibleVenues().filter(v=>inRange(v.id)).map(v=>v.id));
   const pool=data.sessions.filter(s=>vis.has(s.venue) && (!S.starOnly||S.stars.has(s.id)));
   const live=pool.filter(s=>s.start<=t&&s.end>t).sort((a,b)=>(walkMin(a.venue)??0)-(walkMin(b.venue)??0));
-  const next=pool.filter(s=>s.start>t&&s.start-t<=45*MIN).sort((a,b)=>a.start-b.start);
+  // your next starred session, at any distance in time: pinned first, with the walk and a leave-by time
+  const yn=myAgenda().find(it=>it.kind==='session'&&it.start>t);
+  const next=pool.filter(s=>s.start>t&&s.start-t<=45*MIN&&!(yn&&s.id===yn.id)).sort((a,b)=>a.start-b.start);
   const card=(s,kind)=>{
     const v=venueById(s.venue), w=walkMin(s.venue);
     let k, extra='';
-    if(kind==='now'){ k=`<span><b>● Now</b></span><span>${relLabel(s.end-t)} left</span>`;
-      extra=`<div class="bar"><i style="width:${(t-s.start)/(s.end-s.start)*100}%"></i></div>`; }
-    else { const inMin=Math.round((s.start-t)/MIN); k=`<span>Next · in ${inMin} min</span><span>${fmt(s.start)}</span>`;
-      if(w!=null && S.here!==s.venue){ const leave=inMin-w; extra=`<div class="go">${leave<=0?'🏃 Leave now ('+w+' min walk)':'Leave in '+leave+' min · '+w+' min walk'}</div>`; } }
-    return `<div class="card" data-id="${esc(s.id)}" style="--c:${v.color}"><div class="k">${k}</div><div class="t">${S.stars.has(s.id)?'★ ':''}${esc(s.title)}</div><div class="m">${esc(v.name)}${w!=null&&S.here!==s.venue?' · '+w+' min away':''}</div>${extra}</div>`;
+    if(kind==='now'){ k=`<span><b>● Now</b><span class="sr"> until ${fmt(s.end)}</span></span><span class="tk" aria-hidden="true">${relLabel(s.end-t)} left</span>`;
+      extra=`<div class="bar tk" aria-hidden="true"><i style="width:${(t-s.start)/(s.end-s.start)*100}%"></i></div>`; }
+    else { const inMin=Math.round((s.start-t)/MIN); k=`<span>Next<span class="tk" aria-hidden="true"> · in ${inMin} min</span></span><span>${fmtW(s.start)}</span>`;
+      if(w!=null && S.here!==s.venue){ const leave=inMin-w; extra=`<div class="go">${leave<=0?'🏃 Leave now ('+w+' min walk)':w+' min walk · leave by '+fmtW(s.start-w*MIN)}</div>`; } }
+    return `<div class="card" ${RB} data-id="${esc(s.id)}" style="--c:${v.color}"><div class="k">${k}</div><div class="t">${S.stars.has(s.id)?'★ ':''}${esc(s.title)}</div><div class="m">${esc(v.name)}${w!=null&&S.here!==s.venue?' · '+w+' min away':''}</div>${extra}</div>`;
+  };
+  const ycard=s=>{
+    const v=venueById(s.venue), w=S.here&&S.here!==s.venue?walkMin(s.venue):null, leaveBy=w!=null?s.start-w*MIN:null, late=leaveBy!=null?Math.ceil((t-leaveBy)/MIN):0;
+    const go=w==null?(S.here?'':'Set “I\'m at” for a leave-by time'):late>0?`🏃 You'll be late: ${w} min walk<span class="tk" aria-hidden="true"> (${late} min late)</span>`:
+      leaveBy-t<MIN?`🏃 Leave now · ${w} min walk`:`${w} min walk · leave by ${fmtW(leaveBy)}`;
+    return `<div class="card yours" ${RB} data-id="${esc(s.id)}"><div class="k"><span>★ Your next${s.start-t<=2*HOUR?`<span class="tk" aria-hidden="true"> · in ${relLabel(s.start-t)}</span>`:''}</span><span>${fmtW(s.start)}</span></div><div class="t">${esc(s.title)}</div><div class="m">${esc(v.name)}${S.here===s.venue?' · you\'re here':''}</div>${go?`<div class="go">${go}</div>`:''}</div>`;
   };
   // your own blocks: now + next 90 min
   const bcard=b=>{
     const isNow=b.start<=t&&b.end>t, w=walkMin(b.venue), inMin=Math.round((b.start-t)/MIN);
-    let k=isNow?`<span><b>● Now</b> · yours</span><span>${relLabel(b.end-t)} left</span>`:`<span>Yours · in ${inMin} min</span><span>${fmt(b.start)}</span>`;
-    let extra=isNow?`<div class="bar"><i style="width:${(t-b.start)/(b.end-b.start)*100}%"></i></div>`:
-      (w!=null&&w>0?`<div class="go">${inMin-w<=0?'🏃 Leave now ('+w+' min walk)':'Leave in '+(inMin-w)+' min · '+w+' min walk'}</div>`:'');
-    return `<div class="card mine" data-block="${esc(b.id)}"><div class="k">${k}</div><div class="t">👤 ${esc(b.title)}</div><div class="m">${esc(placeLabel(b))}</div>${extra}</div>`;
+    let k=isNow?`<span><b>● Now</b> · yours<span class="sr"> until ${fmt(b.end)}</span></span><span class="tk" aria-hidden="true">${relLabel(b.end-t)} left</span>`:`<span>Yours<span class="tk" aria-hidden="true"> · in ${inMin} min</span></span><span>${fmtW(b.start)}</span>`;
+    let extra=isNow?`<div class="bar tk" aria-hidden="true"><i style="width:${(t-b.start)/(b.end-b.start)*100}%"></i></div>`:
+      (w!=null&&w>0?`<div class="go">${inMin-w<=0?'🏃 Leave now ('+w+' min walk)':w+' min walk · leave by '+fmtW(b.start-w*MIN)}</div>`:'');
+    return `<div class="card mine" ${RB} data-block="${esc(b.id)}"><div class="k">${k}</div><div class="t">👤 ${esc(b.title)}</div><div class="m">${esc(placeLabel(b))}</div>${extra}</div>`;
   };
   const myNow=S.blocks.filter(b=>b.end>t&&b.start-t<=90*MIN).sort((a,b)=>a.start-b.start);
   // upcoming conflicts in the next 4 hours go first: they're the actionable thing
   const warn=agendaIssues(myAgenda()).filter(c=>(c.type==='overlap'||c.bad)&&c.b.start>t-5*MIN&&c.at-t<4*HOUR).map(c=>{
     const ref=c.b.kind==='block'?`data-block="${esc(c.b.id)}"`:`data-id="${esc(c.b.id)}"`;
-    return `<div class="card warn" ${ref}><div class="k"><span>⚠ ${c.type==='overlap'?'Overlap':'Tight connection'}</span><span>${fmt(c.type==='overlap'?c.at:c.b.start)}</span></div><div class="m" style="color:#ffc7cc">${esc(issueText(c))}</div></div>`;
+    return `<div class="card warn" ${RB} ${ref}><div class="k"><span>⚠ ${c.type==='overlap'?'Overlap':'Tight connection'}</span><span>${fmt(c.type==='overlap'?c.at:c.b.start)}</span></div><div class="m" style="color:#ffc7cc">${esc(issueText(c))}</div></div>`;
   });
   let h=warn.join('')+myNow.filter(b=>b.start<=t).map(bcard).join('')+live.map(s=>card(s,'now')).join('')+myNow.filter(b=>b.start>t).map(bcard).join('')+next.map(s=>card(s,'next')).join('');
-  if(!h) h=`<div class="empty">${t>SP.end?'Schedule has ended — use −30m or “Load schedule…” to try another.':
-    t<SP.start?'Starts '+fmt(SP.start)+'.':'Nothing on right now'+(S.radius!=='all'&&S.here?' within your range':'')+'.'}</div>`;
-  $('strip').innerHTML=h;
+  // nothing left today but the event goes on: say when the next day starts rather than "ended"
+  const nd=!data.sessions.some(s=>s.start<=t&&s.end>t)&&data.sessions.filter(s=>s.start>t).sort((a,b)=>a.start-b.start)[0], days=allDays();
+  if(!h) h=`<div class="empty">${nd&&days.length>1&&dayKey(nd.start)!==dayKey(t)?`Day ${days.indexOf(dayKey(nd.start))+1} starts ${fmtW(nd.start)}.`:
+    t>SP.end?'Schedule has ended. Use −30m or “Load schedule…” under ⋯ More to try another.':
+    t<SP.start?'Starts '+fmtW(SP.start)+'.':'Nothing on right now'+(S.radius!=='all'&&S.here?' within your range':'')+'.'}</div>`;
+  if(yn) h=ycard(yn)+h;
+  patchLive($('strip'),h);
 }
 
 /* ---------- controls ---------- */
@@ -239,9 +276,10 @@ function renderControls(){
   const hs=$('hereSel');
   hs.innerHTML=`<option value="">— anywhere —</option>`+data.venues.map(v=>`<option value="${esc(v.id)}">${esc(v.name)}</option>`).join('');
   hs.value=S.here||''; $('radiusSel').value=S.radius;
-  $('starBtn').classList.toggle('on',S.starOnly);
+  $('starBtn').classList.toggle('on',S.starOnly); $('starBtn').setAttribute('aria-pressed',S.starOnly);
   $('liveBtn').classList.toggle('on',S.speed===1 && Math.abs(now()-Date.now())<MIN);
   $('demoBtn').classList.toggle('on',S.speed>1);
+  $('backLive').hidden=$('liveBtn').classList.contains('on');   // "Live" lives under More; this pill shows only while time is shifted
   const days=allDays(); $('daySelWrap').style.display=days.length>1?'':'none';
   if(days.length>1){ $('daySel').innerHTML=days.map(d=>`<option value="${d}" ${d===S.day?'selected':''}>${new Date(d+'T12:00').toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'})}${d===dayKey(Date.now())?' · today':''}</option>`).join(''); }
 }
@@ -250,9 +288,11 @@ function renderAll(){renderControls();renderTimeline();if(VIEW==='map') renderMa
 
 let programmatic=false;
 const tlEl=$('tl');
-['touchstart','wheel','mousedown'].forEach(ev=>tlEl.addEventListener(ev,()=>{ if(S.follow){S.follow=false;tick();} },{passive:true}));
+tlEl.addEventListener('scroll',pinTitles,{passive:true});
+['touchstart','wheel','mousedown','focusin'].forEach(ev=>tlEl.addEventListener(ev,()=>{ if(S.follow){S.follow=false;tick();} },{passive:true}));
 $('followBtn').onclick=()=>{S.follow=true;tick();};
 $('liveBtn').onclick=()=>{S.follow=true;S.dayAuto=true;pickDay(true);setClock(Date.now(),1);};
+$('backLive').onclick=()=>$('liveBtn').click();
 $('demoBtn').onclick=()=>{S.follow=true; S.speed>1?setClock(now(),1):setClock(now(),60);};
 $('backBtn').onclick=()=>{S.follow=true;setClock(now()-30*MIN,S.speed);};
 $('fwdBtn').onclick=()=>{S.follow=true;setClock(now()+30*MIN,S.speed);};
@@ -265,36 +305,79 @@ $('lanesBtn').onclick=openLanes;
 $('importBtn').onclick=openImport;
 $('tzBtn').onclick=openZones; $('tzLab').onclick=openZones;
 
+$('moreBtn').onclick=()=>showDlg($('moreSheet')); $('moreClose').onclick=()=>closeSheet();
 $('addBlockBtn').onclick=()=>{const t=Math.ceil(now()/(15*MIN))*15*MIN;openBlock(null,{start:t,venue:S.here});};
 document.addEventListener('click',e=>{
   if(e.target.closest('.sheet')) return;
   const bk=e.target.closest('[data-block]'); if(bk){openBlock(bk.dataset.block);return;}
   const s=e.target.closest('[data-id]'); if(s){openSession(s.dataset.id);return;}
-  // tap on an empty slot in a lane → new block in (or next to) that room, at that time
+  const add=e.target.closest('.addslot'); if(add){openBlock(null,{start:+add.dataset.at,venue:add.dataset.venue||S.here});return;}
+  document.querySelectorAll('.addslot').forEach(x=>x.remove());
+  // tap on an empty slot in a lane → a "+" for a new block in (or next to) that room at that time; a stray tap only shows the "+"
   if(e.target.classList.contains('track')){
     const r=e.target.getBoundingClientRect(), x=e.clientX-r.left;
     const t=Math.floor((SP.start+x/S.ppm*MIN)/(15*MIN))*15*MIN;
-    openBlock(null,{start:t,venue:e.target.dataset.venue||S.here});return;
+    e.target.insertAdjacentHTML('beforeend',`<button class="addslot" data-at="${t}" data-venue="${esc(e.target.dataset.venue||'')}" style="left:${Math.max(x,$('tl').scrollLeft+50)}px" aria-label="Block time at ${fmt(t)}">+ ${fmt(t)}</button>`);
+    setTimeout(()=>document.querySelectorAll(`.addslot[data-at="${t}"]`).forEach(x=>x.remove()),5000);return;
   }
   if(e.target.closest('#meLab')){openAgenda();return;}
   const lab=e.target.closest('.lab[data-venue]'); if(lab){S.here=lab.dataset.venue;store.set('here:'+data.name,S.here);renderAll();}
 });
 
 /* ---------- sheets ---------- */
-function openSheet(html){$('sheet').innerHTML='<div class="grab"></div>'+html;$('sheet').classList.add('show');$('scrim').classList.add('show');}
-function closeSheet(){$('sheet').classList.remove('show');$('scrim').classList.remove('show');}
+// Sheets are modal dialogs: focus moves in, Tab stays inside, Escape closes, focus returns to the opener.
+let opener=null;
+const FOCUSABLE='a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex="0"]';
+const shownSheet=()=>document.querySelector('.sheet.show');
+const KEYS=['id','data-id','data-block','data-room','data-maproom'];
+function showDlg(el,keep){
+  const cur=shownSheet();
+  if(!cur){ const a=document.activeElement, k=a&&KEYS.find(x=>a.hasAttribute(x)), box=a&&a.closest&&a.closest('#strip,#inner,#mapSvg,#mapList');
+    opener={el:a,k,v:k&&a.getAttribute(k),box:box&&box.id}; }
+  else if(cur!==el){ cur.classList.remove('show'); if(cur.id==='moreSheet') opener={el:$('moreBtn')}; }
+  el.classList.add('show'); $('scrim').classList.add('show');
+  if(el.id==='sheet'){ const h=el.querySelector('h2'); if(h){h.id='sheetTtl';el.setAttribute('aria-labelledby','sheetTtl');} else el.removeAttribute('aria-labelledby'); }
+  const k=keep&&el.querySelector('#'+CSS.escape(keep)); (k||el).focus({preventScroll:true});
+}
+function openSheet(html){const a=document.activeElement, keep=$('sheet').contains(a)&&a.id;$('sheet').innerHTML='<div class="grab"></div>'+html;showDlg($('sheet'),keep);}
+function closeSheet(){
+  const was=shownSheet(); document.querySelectorAll('.sheet.show').forEach(x=>x.classList.remove('show')); $('scrim').classList.remove('show');
+  const o=opener; opener=null; if(!was||!o) return;
+  let el=o.el&&$('moreSheet').contains(o.el)?$('moreBtn'):o.el;
+  if(el&&(!el.isConnected||!el.getClientRects().length)&&o.k){   // re-rendered while the sheet was open: find the same item
+    const root=(o.box&&$(o.box))||document; el=[...root.querySelectorAll(`[${o.k}="${CSS.escape(o.v)}"]`)].find(n=>n.getClientRects().length);
+  }
+  if(el&&el.focus&&el!==document.body&&el.isConnected) el.focus({preventScroll:true});
+}
 $('scrim').onclick=closeSheet;
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){ document.querySelectorAll('.addslot').forEach(x=>x.remove()); if(T.on){endTour();return;} if(shownSheet()){e.preventDefault();closeSheet();} return; }
+  const d=shownSheet();
+  if(e.key==='Tab'&&d&&!T.on){
+    const f=[...d.querySelectorAll(FOCUSABLE)].filter(n=>n.getClientRects().length), a=document.activeElement;
+    if(!f.length){e.preventDefault();d.focus();return;}
+    if(!d.contains(a)){e.preventDefault();f[0].focus();}
+    else if(e.shiftKey&&(a===f[0]||a===d)){e.preventDefault();f[f.length-1].focus();}
+    else if(!e.shiftKey&&a===f[f.length-1]){e.preventDefault();f[0].focus();}
+    return;
+  }
+  // role=button elements (cards, session blocks, chips, map rooms) activate with Enter and Space like real buttons
+  const t=e.target;
+  if((e.key==='Enter'||e.key===' ')&&t.getAttribute&&t.getAttribute('role')==='button'&&!/^(BUTTON|A)$/.test(t.tagName)){
+    e.preventDefault(); if(t.dataset.room) openRoom(t.dataset.room); else t.click();
+  }
+});
 
 function openSession(id){
   const s=data.sessions.find(z=>z.id===id); if(!s) return;
   const v=venueById(s.venue), b=data.buildings[v.building]||{}, t=now(), w=walkMin(s.venue);
-  const status = t>=s.end?'Ended':(t>=s.start?`Live · ${relLabel(s.end-t)} left`:`Starts in ${relLabel(s.start-t)}`);
+  const status = t>=s.end?'Ended':(t>=s.start?`Live · ${relLabel(s.end-t)} left`:s.start-t>2*HOUR?'':`Starts in ${relLabel(s.start-t)}`);
   // what else overlaps (the "what am I missing" view)
   const clash=data.sessions.filter(o=>o.id!==s.id&&o.start<s.end&&o.end>s.start).slice(0,8);
   openSheet(`
     <div><span class="pill c" style="--c:${v.color}">${esc(v.name)}</span><span class="pill">${esc(b.name||'')}</span>${s.track?`<span class="pill">${esc(s.track)}</span>`:''}</div>
     <h2>${esc(s.title)}</h2>
-    <div class="note">${fmt(s.start)}–${fmt(s.end)} · ${status}${w!=null&&S.here!==s.venue?` · ${w} min walk from you`:''}</div>
+    <div class="note">${fmtW(s.start)}–${fmt(s.end)}${status?' · '+status:''}${w!=null&&S.here!==s.venue?` · ${w} min walk from you`:''}</div>
     ${S.stars.has(s.id)?agendaIssues(myAgenda()).filter(c=>(c.type==='overlap'||c.bad)&&(c.a.id===s.id||c.b.id===s.id)).map(c=>`<div class="warnbox">⚠ ${esc(issueText(c))}</div>`).join(''):''}
     ${s.speakers.length?`<p><b>${esc(s.speakers.join(', '))}</b></p>`:''}
     ${s.desc?`<p style="white-space:pre-line">${esc(s.desc.length>900?s.desc.slice(0,900)+'…':s.desc)}</p>`:''}
@@ -304,7 +387,7 @@ function openSession(id){
       <button class="btn" id="goHere">I'm in this room</button>
       <button class="btn" id="closeS">Close</button>
     </div>
-    ${clash.length?`<h3>Happening at the same time</h3>`+clash.map(o=>{const ov=venueById(o.venue);return `<div class="card" data-jump="${esc(o.id)}" style="--c:${ov.color};width:auto;margin-bottom:6px"><div class="k"><span>${esc(ov.name)}</span><span>${fmt(o.start)}–${fmt(o.end)}</span></div><div class="t">${esc(o.title)}</div></div>`}).join(''):''}
+    ${clash.length?`<h3>Happening at the same time</h3>`+clash.map(o=>{const ov=venueById(o.venue);return `<div class="card" ${RB} data-jump="${esc(o.id)}" style="--c:${ov.color};width:auto;margin-bottom:6px"><div class="k"><span>${esc(ov.name)}</span><span>${fmtW(o.start)}–${fmt(o.end)}</span></div><div class="t">${esc(o.title)}</div></div>`}).join(''):''}
   `);
   $('starOne').onclick=()=>{S.stars.has(s.id)?S.stars.delete(s.id):S.stars.add(s.id);saveStars();renderAll();openSession(id);};
   $('goHere').onclick=()=>{S.here=s.venue;store.set('here:'+data.name,S.here);closeSheet();renderAll();};
@@ -316,15 +399,15 @@ function openLanes(){
   const groups={}; data.venues.forEach(v=>(groups[v.building]=groups[v.building]||[]).push(v));
   openSheet(`<h2>Rooms & venues</h2><div class="note">Tap to hide lanes you don’t care about. Tap a room name in the timeline to set “I'm here”.</div>`+
     Object.entries(groups).map(([b,vs])=>`<h3>${esc((data.buildings[b]||{}).name||b)}</h3><div class="chips">`+
-      vs.map(v=>`<div class="chip ${S.hidden.has(v.id)?'off':''}" data-lane="${esc(v.id)}" style="--c:${v.color}"><i></i>${esc(v.name)}</div>`).join('')+`</div>`).join('')+
+      vs.map(v=>`<div class="chip ${S.hidden.has(v.id)?'off':''}" ${RB} aria-pressed="${!S.hidden.has(v.id)}" data-lane="${esc(v.id)}" style="--c:${v.color}"><i></i>${esc(v.name)}</div>`).join('')+`</div>`).join('')+
     `<div class="row"><button class="btn" id="allOn">Show all</button><button class="btn" id="closeS">Done</button></div>`);
-  $('sheet').querySelectorAll('[data-lane]').forEach(el=>el.onclick=()=>{const id=el.dataset.lane;S.hidden.has(id)?S.hidden.delete(id):S.hidden.add(id);el.classList.toggle('off');store.set('hidden',[...S.hidden]);renderTimeline();renderStrip();});
+  $('sheet').querySelectorAll('[data-lane]').forEach(el=>el.onclick=()=>{const id=el.dataset.lane;S.hidden.has(id)?S.hidden.delete(id):S.hidden.add(id);el.classList.toggle('off');el.setAttribute('aria-pressed',!S.hidden.has(id));store.set('hidden',[...S.hidden]);renderTimeline();renderStrip();});
   $('allOn').onclick=()=>{S.hidden.clear();store.set('hidden',[]);renderAll();openLanes();};
   $('closeS').onclick=closeSheet;
 }
 function openHerePrompt(){
   openSheet(`<h2>Where are you?</h2><div class="note">Distance filters need a starting point.</div><div class="chips" style="margin-top:10px">`+
-    data.venues.map(v=>`<div class="chip" data-here="${esc(v.id)}" style="--c:${v.color}"><i></i>${esc(v.name)}</div>`).join('')+`</div>`);
+    data.venues.map(v=>`<div class="chip" ${RB} data-here="${esc(v.id)}" style="--c:${v.color}"><i></i>${esc(v.name)}</div>`).join('')+`</div>`);
   $('sheet').querySelectorAll('[data-here]').forEach(el=>el.onclick=()=>{S.here=el.dataset.here;store.set('here:'+data.name,S.here);closeSheet();renderAll();});
 }
 
@@ -384,8 +467,8 @@ function openAgenda(){
   openSheet(`<h2>My agenda</h2><div class="note">Your blocks plus starred sessions, with the walk between each.</div>`+
     (items.length?items.map((it,i)=>{
       const nx=iss.filter(c=>c.a===it);
-      return `<div class="card ${it.kind==='block'?'mine':''}" ${it.kind==='block'?`data-ag-block="${esc(it.id)}"`:`data-ag-id="${esc(it.id)}"`} style="width:auto;margin-top:8px;${it.kind==='session'?'--c:'+venueById(it.venue).color:''}">
-        <div class="k"><span>${fmt(it.start)}–${fmt(it.end)}</span><span>${it.kind==='block'?'yours':'session'}</span></div>
+      return `<div class="card ${it.kind==='block'?'mine':''}" ${RB} ${it.kind==='block'?`data-ag-block="${esc(it.id)}"`:`data-ag-id="${esc(it.id)}"`} style="width:auto;margin-top:8px;${it.kind==='session'?'--c:'+venueById(it.venue).color:''}">
+        <div class="k"><span>${fmtW(it.start)}–${fmt(it.end)}</span><span>${it.kind==='block'?'yours':'session'}</span></div>
         <div class="t">${it.kind==='block'?'👤 ':'★ '}${esc(it.title)}</div><div class="m">${esc(placeLabel(it))}</div></div>`+
         nx.map(c=>c.type==='overlap'||c.bad?`<div class="warnbox">⚠ ${esc(issueText(c))}</div>`:`<div class="note" style="padding:4px 10px">↓ ${c.walk} min walk · ${c.gap} min gap</div>`).join('');
     }).join(''):`<div class="empty">Nothing yet. Tap an empty slot in any room, or ☆ a session.</div>`)+
@@ -477,8 +560,8 @@ function directions(fromId,toId,startAt){
   if(startAt && w!=null){
     const t=now(), leaveIn=Math.round((startAt-t)/MIN)-w;
     timing = startAt<=t ? `<div class="warnbox">Already started. Go now (${w} min walk).</div>`
-      : leaveIn<=0 ? `<div class="warnbox">🏃 Leave now: ${w} min walk, starts ${fmt(startAt)}.</div>`
-      : `<div class="okbox">${w} min walk · leave by ${fmt(startAt-w*MIN)} (${leaveIn} min from now).</div>`;
+      : leaveIn<=0 ? `<div class="warnbox">🏃 Leave now: ${w} min walk, starts ${fmtW(startAt)}.</div>`
+      : `<div class="okbox">${w} min walk · leave by ${fmtW(startAt-w*MIN)}${leaveIn<=120?` (${leaveIn} min from now)`:''}.</div>`;
   } else if(w!=null) timing=`<div class="note">${w} min walk</div>`;
   return timing+`<ol style="margin:8px 0 0;padding-left:20px;color:#c9d0dc">${steps.map(x=>`<li style="margin:4px 0">${x}</li>`).join('')}</ol>`;
 }
@@ -491,17 +574,17 @@ function openHere(id){
   const nextAnywhere=data.sessions.filter(s=>s.start>t).sort((a,b)=>a.start-b.start)[0];
   openSheet(`<div><span class="pill c" style="--c:${v.color}">📍 You're here</span></div>
     <h2>${esc(v.name)}</h2><div class="note">${esc(b.name||'')}${v.where?' · '+esc(v.where):''}</div>
-    ${here.length?`<h3>In this room</h3>`+here.map(s=>`<div class="card" data-jump="${esc(s.id)}" style="--c:${v.color};width:auto;margin-bottom:6px"><div class="k"><span>${s.start<=t?'<b>● Now</b>':'Next'}</span><span>${fmt(s.start)}–${fmt(s.end)}</span></div><div class="t">${esc(s.title)}</div></div>`).join(''):''}
-    ${mine?`<h3>Your next stop</h3><div class="card ${mine.kind==='block'?'mine':''}" style="width:auto;${mine.kind==='session'?'--c:'+venueById(mine.venue).color:''}"><div class="k"><span>${mine.start<=t?'Now':'At '+fmt(mine.start)}</span><span>${mine.kind==='block'?'yours':'session'}</span></div><div class="t">${mine.kind==='block'?'👤 ':'★ '}${esc(mine.title)}</div><div class="m">${esc(placeLabel(mine))}</div></div>${mine.venue?directions(id,mine.venue,mine.start):''}`
+    ${here.length?`<h3>In this room</h3>`+here.map(s=>`<div class="card" ${RB} data-jump="${esc(s.id)}" style="--c:${v.color};width:auto;margin-bottom:6px"><div class="k"><span>${s.start<=t?'<b>● Now</b>':'Next'}</span><span>${fmtW(s.start)}–${fmt(s.end)}</span></div><div class="t">${esc(s.title)}</div></div>`).join(''):''}
+    ${mine?`<h3>Your next stop</h3><div class="card ${mine.kind==='block'?'mine':''}" style="width:auto;${mine.kind==='session'?'--c:'+venueById(mine.venue).color:''}"><div class="k"><span>${mine.start<=t?'Now':'At '+fmtW(mine.start)}</span><span>${mine.kind==='block'?'yours':'session'}</span></div><div class="t">${mine.kind==='block'?'👤 ':'★ '}${esc(mine.title)}</div><div class="m">${esc(placeLabel(mine))}</div></div>${mine.venue?directions(id,mine.venue,mine.start):''}`
       :`<div class="note" style="margin-top:10px">Star sessions or add blocks and this screen will route you to the next one.</div>`}
     <h3>Where do you want to go?</h3>
-    <div class="chips">${data.venues.filter(x=>x.id!==id).map(x=>`<div class="chip" data-to="${esc(x.id)}" style="--c:${x.color}"><i></i>${esc(x.name)}</div>`).join('')}</div>
+    <div class="chips">${data.venues.filter(x=>x.id!==id).map(x=>`<div class="chip" ${RB} data-to="${esc(x.id)}" style="--c:${x.color}"><i></i>${esc(x.name)}</div>`).join('')}</div>
     <div id="dirOut"></div>
     <div class="row"><button class="btn on" id="nearBtn">What's on near me</button><button class="btn" id="closeS">Close</button></div>`);
   $('sheet').querySelectorAll('[data-to]').forEach(el=>el.onclick=()=>{
     const to=el.dataset.to, nx=data.sessions.filter(s=>s.venue===to&&s.end>now()).sort((a,b)=>a.start-b.start)[0];
     $('dirOut').innerHTML=`<h3>To ${esc(venueById(to).name)}${nx?` · next: ${esc(nx.title)}`:''}</h3>`+directions(id,to,nx&&nx.start>now()?nx.start:null);
-    $('dirOut').scrollIntoView({behavior:'smooth',block:'nearest'});
+    $('dirOut').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'nearest'});
   });
   $('sheet').querySelectorAll('[data-jump]').forEach(el=>el.onclick=()=>openSession(el.dataset.jump));
   $('nearBtn').onclick=()=>{S.radius='5';store.set('radius','5');S.follow=true;closeSheet();renderAll();};
@@ -576,7 +659,7 @@ function openShare(){
     ${link?`<div class="note">Anyone who opens this link gets “${esc(data.name)}” loaded from its feed, even on a phone that has never opened NowLine. Post it in the event's chat or put it on a slide.</div>
       <div class="form"><input id="shLink" readonly value="${esc(link)}"></div>
       <div class="row">${navigator.share?'<button class="btn on" id="shGo">Share…</button>':''}<button class="btn${navigator.share?'':' on'}" id="shCopy">Copy link</button><button class="btn" id="closeS">Close</button></div>`
-    :`<div class="warnbox" id="shWarn">⚠ ${data.name.startsWith('Demo')?'This is the demo.':'This schedule was loaded from a file or pasted text, so there is no link to share.'} Load a schedule from its feed link (Load schedule… → From a link) to get a link anyone can open.</div>
+    :`<div class="warnbox" id="shWarn">⚠ ${data.name.startsWith('Demo')?'The demo has no link to share.':'This schedule was loaded from a file or pasted text, so there is no link to share.'} Load a schedule from its feed link (Load schedule… → From a link) to get a link anyone can open.</div>
       <div class="row"><button class="btn" id="closeS">Close</button></div>`}`);
   $('closeS').onclick=closeSheet;
   if(!link) return;
@@ -592,7 +675,7 @@ $('shareBtn').onclick=openShare;
 let VIEW='timeline';
 function setView(v){
   VIEW=v; document.body.classList.toggle('mapmode',v==='map');
-  $('vTl').classList.toggle('on',v!=='map'); $('vMap').classList.toggle('on',v==='map');
+  $('vTl').classList.toggle('on',v!=='map'); $('vMap').classList.toggle('on',v==='map'); $('vTl').setAttribute('aria-pressed',v!=='map'); $('vMap').setAttribute('aria-pressed',v==='map');
   if(v==='map'){ renderMap(true); } else { S.follow=true; tick(true); }
 }
 $('vTl').onclick=()=>setView('timeline'); $('vMap').onclick=()=>setView('map');
@@ -641,7 +724,7 @@ function renderMap(refit){
     const m=b.map; if(!m) continue;
     const anyVenue=data.venues.find(v=>v.building===bid), w=anyVenue?walkMin(anyVenue.id):null;
     const far=anyVenue&&!inRange(anyVenue.id);
-    h+=`<g opacity="${far?0.35:1}"><rect x="${m.x}" y="${m.y}" width="${m.w}" height="${m.h}" rx="14" fill="${b.color}" fill-opacity=".10" stroke="${b.color}" stroke-opacity=".6" stroke-width="${2*k}"/>`;
+    h+=`<g opacity="${far?0.7:1}"><rect x="${m.x}" y="${m.y}" width="${m.w}" height="${m.h}" rx="14" fill="${b.color}" fill-opacity=".10" stroke="${b.color}" stroke-opacity=".6" stroke-width="${2*k}"/>`;
     h+=`<text x="${m.x+12}" y="${m.y+20*k}" fill="${b.color}" font-size="${13*k}" font-weight="700">${esc(b.name)}</text>`;
     if(w!=null && me && me.building!==bid){
       const bx=m.x+m.w-10, by=m.y+10;
@@ -669,11 +752,11 @@ function renderMap(refit){
     const sst=sessStatus(v,t), far=!inRange(v.id), isMe=me&&me.id===v.id;
     const col=sst.live?'#ff4d5e':(sst.soon?'#ffc94d':'#566074');
     const x=v.map.x, y=v.map.y;
-    h+=`<g data-room="${esc(v.id)}" style="cursor:pointer" opacity="${far?0.35:1}">`;
-    h+=`<circle cx="${x}" cy="${y}" r="${30*k}" fill="transparent"/>`;
+    const label=v.name, sub=sst.live?('● '+sst.live.title):(sst.next?(fmtW(sst.next.start)+' '+sst.next.title):'Nothing scheduled');
+    h+=`<g data-room="${esc(v.id)}" tabindex="0" role="button" aria-label="${esc(label+': '+sub)}" style="cursor:pointer" opacity="${far?0.7:1}">`;
+    h+=`<circle class="hit" cx="${x}" cy="${y}" r="${30*k}" fill="transparent"/>`;
     if(sst.live) h+=`<circle cx="${x}" cy="${y}" r="9" fill="none" stroke="${col}" stroke-width="${2*k}" class="pulse"/>`;
     h+=`<circle cx="${x}" cy="${y}" r="${8*k}" fill="${col}" stroke="#0e1116" stroke-width="${2*k}"/>`;
-    const label=v.name, sub=sst.live?('● '+sst.live.title):(sst.next?(fmt(sst.next.start)+' '+sst.next.title):'Nothing scheduled');
     h+=`<text x="${x}" y="${y-14*k}" fill="#e8ecf3" font-size="${12*k}" font-weight="700" text-anchor="middle" paint-order="stroke" stroke="#0b0e13" stroke-width="${4*k}">${esc(label)}</text>`;
     h+=`<text x="${x}" y="${y+22*k}" fill="${sst.live?'#ff9aa4':'#8a93a6'}" font-size="${10*k}" text-anchor="middle" paint-order="stroke" stroke="#0b0e13" stroke-width="${3*k}">${esc(sub.length>24?sub.slice(0,23)+'…':sub)}</text>`;
     h+=`</g>`;
@@ -683,7 +766,7 @@ function renderMap(refit){
     h+=`<circle cx="${me.map.x}" cy="${me.map.y}" r="${11*k}" fill="#7cc4ff" stroke="#fff" stroke-width="${3*k}"/>`;
     h+=`<text x="${me.map.x}" y="${me.map.y+38*k}" fill="#7cc4ff" font-size="${11*k}" font-weight="800" text-anchor="middle" paint-order="stroke" stroke="#0b0e13" stroke-width="${4*k}">YOU</text>`;
   }
-  svg.innerHTML=h;
+  keepFocus(svg,()=>svg.innerHTML=h);
   $('mapHint').innerHTML=me?`📍 You're at <b>${esc(me.name)}</b>. Tap a room for directions.`:`Tap a room and choose “I'm here”, or scan a room sign.`;
 }
 function renderMapList(){
@@ -692,17 +775,17 @@ function renderMapList(){
     .filter(r=>r.live||r.next).sort((a,b)=>(a.w??99)-(b.w??99)||((a.live?0:1)-(b.live?0:1)));
   const row=r=>{
     const s=r.live||r.next, isMe=me&&r.v.id===me.id;
-    const stx=r.live?`<span class="st live">● LIVE · ${relLabel(r.live.end-t)} left</span>`:`<span class="st ${r.soon?'soon':''}">${r.soon?'in '+relLabel(r.next.start-t):fmt(r.next.start)}</span>`;
-    return `<div class="mrow" data-maproom="${esc(r.v.id)}"><div class="wk" style="color:${r.v.color}">${isMe?'📍':(r.w!=null?r.w:'·')}<small>${isMe?'here':(r.w!=null?'min':'')}</small></div><div class="bd"><b>${esc(s.title)}</b><span>${esc(r.v.name)}</span></div>${stx}</div>`;
+    const stx=r.live?`<span class="st live">● LIVE · ${relLabel(r.live.end-t)} left</span>`:`<span class="st ${r.soon?'soon':''}">${r.soon?'in '+relLabel(r.next.start-t):fmtW(r.next.start)}</span>`;
+    return `<div class="mrow" ${RB} data-maproom="${esc(r.v.id)}"><div class="wk" style="color:${r.v.color}">${isMe?'📍':(r.w!=null?r.w:'·')}<small>${isMe?'here':(r.w!=null?'min':'')}</small></div><div class="bd"><b>${esc(s.title)}</b><span>${esc(r.v.name)}</span></div>${stx}</div>`;
   };
-  $('mapList').innerHTML=`<h3>${me?(S.radius==='all'?'By walking time from you':'Within your range'):'Live and up next'}</h3>`+(rows.length?rows.map(row).join(''):`<div class="empty">Nothing on${S.radius!=='all'?' within your range':''} right now.</div>`);
+  keepFocus($('mapList'),()=>$('mapList').innerHTML=`<h3>${me?(S.radius==='all'?'By walking time from you':'Within your range'):'Live and up next'}</h3>`+(rows.length?rows.map(row).join(''):`<div class="empty">Nothing on${S.radius!=='all'?' within your range':''} right now.</div>`));
   $('mapList').querySelectorAll('[data-maproom]').forEach(el=>el.onclick=()=>openRoom(el.dataset.maproom));
 }
 function openRoom(id){
   const v=venueById(id), b=data.buildings[v.building]||{}, t=now(), me=S.here&&venueById(S.here);
   const ss=data.sessions.filter(s=>s.venue===id&&s.end>t).sort((a,b)=>a.start-b.start).slice(0,3);
   openSheet(`<div><span class="pill c" style="--c:${v.color}">${esc(b.name||'')}</span></div><h2>${esc(v.name)}</h2>${v.where?`<div class="note">${esc(v.where)}</div>`:''}
-    ${ss.length?`<h3>On here</h3>`+ss.map(s=>`<div class="card" data-jump="${esc(s.id)}" style="--c:${v.color};width:auto;margin-bottom:6px"><div class="k"><span>${s.start<=t?'<b>● Now</b>':'Next'}</span><span>${fmt(s.start)}–${fmt(s.end)}</span></div><div class="t">${esc(s.title)}</div></div>`).join(''):`<div class="empty">Nothing else scheduled here.</div>`}
+    ${ss.length?`<h3>On here</h3>`+ss.map(s=>`<div class="card" ${RB} data-jump="${esc(s.id)}" style="--c:${v.color};width:auto;margin-bottom:6px"><div class="k"><span>${s.start<=t?'<b>● Now</b>':'Next'}</span><span>${fmtW(s.start)}–${fmt(s.end)}</span></div><div class="t">${esc(s.title)}</div></div>`).join(''):`<div class="empty">Nothing else scheduled here.</div>`}
     ${me&&me.id!==id?`<h3>Getting there</h3>`+directions(me.id,id,ss[0]&&ss[0].start>t?ss[0].start:null):''}
     <div class="row">${me&&me.id!==id?'<button class="btn on" id="rRoute">Show route on map</button>':''}${!me||me.id!==id?`<button class="btn ${me?'':'on'}" id="rHere">I'm here</button>`:''}<button class="btn" id="closeS">Close</button></div>`);
   $('sheet').querySelectorAll('[data-jump]').forEach(el=>el.onclick=()=>openSession(el.dataset.jump));
@@ -745,7 +828,7 @@ window.addEventListener('resize',()=>{if(VIEW==='map') renderMap(true);});
 
 /* ---------- guided tour with voiceover ---------- */
 const TOUR=[
-  {ttl:'The problem', say:"Ever been at a conference and don't know what sessions are happening right now, since the agenda is confusing and you are in an unknown place?", scene:'mess'},
+  {ttl:'The problem', say:"Ever stood in a conference hallway with no idea what's on right now, or where it is?", scene:'mess'},
   {ttl:'The problem', say:"Ever wondered: where am I? Do I have time to get to my session?", scene:'mess2'},
   {ttl:'Meet NowLine', say:"Meet NowLine. Every room is a swim lane, and the red line is right now. It moves with the clock, so the schedule always starts from where you are in time.",
     before:async()=>{closeSheet();S.radius='all';S.here=null;S.follow=true;setClock(Date.now(),1);}, target:()=>$('tl')},
@@ -853,7 +936,7 @@ function renderCap(step){
   const {cap}=tourLayer();
   cap.innerHTML=`<div class="ttl">${esc(step.ttl)}</div><div class="txt">${esc(step.say)}</div>
     <div class="ctl"><div class="dots">${TOUR.map((_,k)=>`<i class="${k<=T.i?'on':''}"></i>`).join('')}</div>
-    <div style="display:flex;gap:6px"><button class="btn" id="tMute">${T.muted?'🔇':'🔈'}</button><button class="btn" id="tBack">‹</button><button class="btn" id="tNext">Next ›</button><button class="btn" id="tExit">✕</button></div></div>`;
+    <div style="display:flex;gap:6px"><button class="btn" id="tMute" aria-label="${T.muted?'Turn voiceover on':'Mute voiceover'}">${T.muted?'🔇':'🔈'}</button><button class="btn" id="tBack" aria-label="Previous step">‹</button><button class="btn" id="tNext">Next ›</button><button class="btn" id="tExit" aria-label="End tour">✕</button></div></div>`;
   $('tMute').onclick=()=>{T.muted=!T.muted;store.set('tourMuted',T.muted);try{speechSynthesis.cancel();if(T.audio)T.audio.pause();}catch(e){}renderCap(step);};
   $('tNext').onclick=()=>jump(T.i+1);
   $('tBack').onclick=()=>jump(Math.max(0,T.i-1));
@@ -902,22 +985,20 @@ function endTour(){
   closeSheet();
   if(tourSaved){data=tourSaved.data;S.hidden=new Set(tourSaved.hidden);S.starOnly=tourSaved.starOnly;boot();S.here=tourSaved.here;S.radius=tourSaved.radius;renderAll();tourSaved=null;}
 }
+// first visit: a dismissible banner, not a modal. The tour starts muted (captions carry it); 🔈 turns the voice on.
 function tourIntro(){
-  const m=document.createElement('div');m.className='tcard';m.style.background='rgba(5,7,12,.8)';
-  m.innerHTML=`<div class="box"><h1>Now<span>Line</span></h1><p>A 90-second guided tour, with voiceover. Turn your sound on.</p><div class="row" style="justify-content:center"><button class="btn on" id="tGo">▶ Play tour</button><button class="btn" id="tSilent">Play muted</button><button class="btn" id="tNo">Skip</button></div></div>`;
-  document.body.appendChild(m);
-  $('tGo').onclick=()=>{m.remove();T.muted=false;store.set('tourMuted',false);startTour();};
-  $('tSilent').onclick=()=>{m.remove();T.muted=true;store.set('tourMuted',true);startTour();};
-  $('tNo').onclick=()=>m.remove();
+  const b=$('tourBanner'); b.hidden=false;
+  $('tGo').onclick=()=>{b.hidden=true;T.muted=true;startTour();};
+  $('tNo').onclick=()=>{b.hidden=true;};
 }
-$('tourBtn').onclick=()=>{ if(T.on) endTour(); else startTour(); };
+$('tourBtn').onclick=()=>{ if(T.on) endTour(); else {closeSheet();startTour();} };
 window.addEventListener('hashchange',()=>{ if(location.hash==='#tour'&&!T.on) tourIntro(); });
 
 const parseAny=txt=>{ const t=txt.replace(/^\uFEFF/,'').trim(); return /^BEGIN:VCALENDAR/i.test(t)?scheduleFromICS(t):normalize(JSON.parse(t)); };
 async function fetchFeed(u,r){ const res=await fetch(r? r+encodeURIComponent(u) : u); if(!res.ok) throw new Error('HTTP '+res.status); return res.text(); }
 function openImport(){
   openSheet(`<h2>Load a schedule</h2>
-    <h3>From Sched (KubeCon, AGNTCon + MCPCon, Open Source Summit…)</h3>
+    <h3>From Sched (used by KubeCon, Open Source Summit and others)</h3>
     <div class="note">On the event's Sched site, <b>log out</b>, tap <b>Mobile App + iCal</b>, and download or copy the calendar for the <i>whole event</i>. Choose that file below, or paste its text. Any whole-event .ics works (Swapcard, Cvent and others export them too).</div>
     <div class="form" style="margin-top:8px"><input type="file" id="impFile" accept=".ics,.json,text/calendar,application/json"></div>
     <h3>From a link</h3>
@@ -928,16 +1009,16 @@ function openImport(){
     <div class="note">A calendar (.ics text), <b>pretalx / frab</b> <code>schedule.json</code>, <b>Sessionize</b> “All data” or “Schedule grid”, or the simple format. Times show in the event’s time zone when the schedule gives one (change it under “Time zone…”).</div>
     <textarea id="imp" placeholder='BEGIN:VCALENDAR… or {…}'></textarea>
     <div class="note" id="impInfo"></div>
-    <label class="ck"><input type="checkbox" id="rebase"> Shift dates to today (to try a past conference live)</label>
+    <label class="ck"><input type="checkbox" id="rebase"> Replay it today (moves a past event's dates to today)</label>
     <div class="err" id="impErr"></div>
-    <div class="row"><button class="btn on" id="doImp">Load</button><button class="btn" id="fill">Insert simple example</button><button class="btn" id="resetDemo">Back to demo</button><button class="btn" id="closeS">Cancel</button></div>`);
+    <div class="row"><button class="btn on" id="doImp">Load</button><button class="btn" id="fill">Paste an example</button><button class="btn" id="resetDemo">Back to demo</button><button class="btn" id="closeS">Cancel</button></div>`);
   $('fill').onclick=()=>{$('imp').value=SAMPLE_SIMPLE;$('rebase').checked=true;};
   $('closeS').onclick=closeSheet;
   $('resetDemo').onclick=()=>{store.set('data',null);data=demoData();boot();closeSheet();};
   let fetched=null;   // {text, feed, relay} from the last successful Fetch, so the loaded schedule remembers its link
   const preview=()=>{ try{ const d=parseAny($('imp').value); const days=new Set(d.sessions.map(s=>dayKey(s.start))).size;
       $('impInfo').textContent=`Looks good: ${d.sessions.length} sessions in ${d.venues.length} rooms over ${days} day${days>1?'s':''}${d.name?' · '+d.name:''}.`; $('impErr').textContent=''; }
-    catch(e){ $('impInfo').textContent=''; if($('imp').value.trim()) $('impErr').textContent='Not readable yet: '+e.message; } };
+    catch(e){ $('impInfo').textContent=''; if($('imp').value.trim()) $('impErr').textContent="That doesn't look like .ics or schedule JSON ("+e.message+")"; } };
   $('imp').oninput=preview;
   $('impFile').onchange=e=>{const f=e.target.files[0]; if(!f) return; f.text().then(t=>{$('imp').value=t;preview();});};
   $('impFetch').onclick=async()=>{
@@ -1006,6 +1087,6 @@ boot();
 const sign=parseSignLink(location.href);
 if(sign.feed) signFeed(sign); else handleHash();
 // a first scan should land on the room, not the tour; it's still offered on the next visit
-if(location.hash==='#tour' || (!sign.feed && !store.get('seenTour',false))){ store.set('seenTour',true); tourIntro(); }
+if(location.hash==='#tour' || (!sign.feed && !location.hash.startsWith('#here-') && !store.get('seenTour',false))){ store.set('seenTour',true); tourIntro(); }
 setInterval(()=>tick(), 250);
 window.addEventListener('resize',()=>tick());
