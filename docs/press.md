@@ -1,12 +1,12 @@
 # Press kit
 
-Everything here is in the repository, under the same licence terms as the rest of NowLine unless
-noted. Link to <https://github.com/bnelford/nowline> and the live demo at
-<https://bnelford.github.io/nowline/>.
+Everything here is in the repository, under the same licence terms as the rest of RoomHop unless
+noted. Link to <https://github.com/bnelford/roomhop> and the live demo at
+<https://bnelford.github.io/roomhop/>.
 
 ## Name
 
-**NowLine**: one word, capital N and capital L. Not "Nowline", "Now Line" or "NOWLINE".
+**RoomHop**: one word, capital N and capital L. Not "Roomhop", "Room Hop" or "ROOMHOP".
 
 ## Logo files
 
@@ -42,7 +42,7 @@ In [`docs/`](./). The GIFs are 400×760; the screenshot is 1280×720.
 | --- | --- |
 | [`docs/demo.gif`](demo.gif) | The timeline at 60× speed: rooms as lanes, the now-line, the now/next strip, a tight-connection warning |
 | [`docs/demo-map.gif`](demo-map.gif) | The map: rooms by walking time, directions, and the walking route between buildings |
-| [`docs/demo-scan.gif`](demo-scan.gif) | A room sign being scanned, and NowLine opening with "You're here" and directions |
+| [`docs/demo-scan.gif`](demo-scan.gif) | A room sign being scanned, and RoomHop opening with "You're here" and directions |
 | [`docs/screenshot.png`](screenshot.png) | A still of the app |
 
 The data in all of them is synthetic demo data, not a real event.
@@ -51,19 +51,19 @@ The data in all of them is synthetic demo data, not a real event.
 
 **25 words**
 
-> NowLine is a free, open-source live timeline for conferences. It reads your schedule
+> RoomHop is a free, open-source live timeline for conferences. It reads your schedule
 > export and shows attendees what's on now, what's next, and the walk.
 
 **50 words**
 
-> NowLine is a free, open-source live timeline for conferences. It reads the schedule organizers
+> RoomHop is a free, open-source live timeline for conferences. It reads the schedule organizers
 > already publish in Sched, pretalx, Sessionize or any `.ics`, and shows attendees what's on now, what's
 > next, and whether they'll make the walk to their next session. There are no accounts and no server
 > to run.
 
 **100 words**
 
-> NowLine is a free, open-source live timeline for conferences. It reads the schedule organizers
+> RoomHop is a free, open-source live timeline for conferences. It reads the schedule organizers
 > already publish in Sched, pretalx, Sessionize or any whole-event `.ics` feed, and turns it into a
 > phone-first live view: every room is a lane, a red line marks the current time, and attendees can see
 > what's on now and what's next. Starred sessions are checked against the walk between rooms, and a
@@ -77,4 +77,4 @@ The data in all of them is synthetic demo data, not a real event.
 ## Contact
 
 > TODO (maintainer): a press contact address. Until then, open an issue at
-> <https://github.com/bnelford/nowline/issues>.
+> <https://github.com/bnelford/roomhop/issues>.

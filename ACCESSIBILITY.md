@@ -1,6 +1,6 @@
 # Accessibility
 
-NowLine's target is [WCAG 2.2](https://www.w3.org/TR/WCAG22/) level AA, for both attendees and
+RoomHop's target is [WCAG 2.2](https://www.w3.org/TR/WCAG22/) level AA, for both attendees and
 organizers. It doesn't meet that target yet. This page says where it stands, so you can judge
 whether it works for your event and tell us what's missing.
 
@@ -42,7 +42,7 @@ whether it works for your event and tell us what's missing.
 
 ## Reporting a problem
 
-Open an issue on [GitHub](https://github.com/bnelford/nowline/issues/new/choose) using the bug report
+Open an issue on [GitHub](https://github.com/bnelford/roomhop/issues/new/choose) using the bug report
 template, and put "Accessibility" in the title. It helps to include:
 
 - what you were trying to do, and what happened;

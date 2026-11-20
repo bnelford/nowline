@@ -1,22 +1,28 @@
 # Changelog
 
-All notable changes to NowLine are recorded here. The format follows
+All notable changes to RoomHop are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Room-sign link parameters are covered by
 the [stable links promise](docs/room-signs.md#stable-links).
 
 ## [Unreleased]
 
+### Changed
+
+- Renamed from NowLine to RoomHop. The repo is now `bnelford/roomhop` and the app is at
+  `https://bnelford.github.io/roomhop/`. On-device data starts fresh (storage keys are now `roomhop:*`),
+  and a self-hosted config is now `roomhop.config.json`.
+
 ### Added
 
 - Automatic feed refresh while the app is open, with an "Updated HH:MM" status and a notice when a
   session moves to a different room.
-- Offline support: NowLine is an installable progressive web app, and keeps working without a
+- Offline support: RoomHop is an installable progressive web app, and keeps working without a
   connection once loaded.
 - `&venue=<url>` loads a `venue.json` overlay with buildings, walk times and routes on top of any
   schedule export. See [docs/importing.md](docs/importing.md).
-- `nowline.config.json` for self-hosted copies, including branding. See [docs/self-host.md](docs/self-host.md).
-- `?embed=1` for embedding NowLine in an event's website.
+- `roomhop.config.json` for self-hosted copies, including branding. See [docs/self-host.md](docs/self-host.md).
+- `?embed=1` for embedding RoomHop in an event's website.
 - **Print all** prints every room's sign at once.
 - Attendee mode: organizer tools are hidden unless the page is opened with `?admin`.
 - README shows the map's walking route and a room sign being scanned ("Lost? Scan here") next to
@@ -44,7 +50,7 @@ First open-source release.
 
 - Live timeline: rooms as swim lanes, a now-line, and a now/next strip.
 - Importers for Sched and other whole-event `.ics` feeds, pretalx/frab `schedule.json`, Sessionize
-  "All data" and "Schedule grid" JSON, and NowLine's simple JSON with buildings, walk times and routes.
+  "All data" and "Schedule grid" JSON, and RoomHop's simple JSON with buildings, walk times and routes.
 - Personal agenda: stars, your own blocks, calendar import, and overlap and walk-time checks.
 - Time-zone handling per event, with a choice of display zone.
 - QR room signs that set "I'm here" and can carry the feed, relay and time zone.
@@ -65,5 +71,5 @@ First open-source release.
   a hex colour and numeric walk times, so a crafted feed link or QR code can't inject script.
   (9ae3d4f)
 
-[Unreleased]: https://github.com/bnelford/nowline/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/bnelford/nowline/releases/tag/v0.1.0
+[Unreleased]: https://github.com/bnelford/roomhop/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/bnelford/roomhop/releases/tag/v0.1.0

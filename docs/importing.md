@@ -16,7 +16,7 @@ session's wall-clock time.
 
 ## Time zones
 
-Every event has a time zone. NowLine takes it from the schedule when it can: `X-WR-TIMEZONE` or
+Every event has a time zone. RoomHop takes it from the schedule when it can: `X-WR-TIMEZONE` or
 the events' `TZID` in an `.ics`, `time_zone_name` in pretalx/frab, or `timezone` in simple JSON.
 Otherwise it uses the device's zone, and you can set the event's zone under **Time zone…**. Times
 written without an offset (Sessionize, floating `.ics` times) are read in the event's zone.
@@ -101,11 +101,11 @@ them, which building each room is in, directions to each room, and turn-by-turn 
   a palette color), walk times must be numbers from 0 to 1440, and names, `where` and route text are plain
   text (capped at 80, 200 and 500 characters) shown escaped. Anything else is ignored.
 
-To use it, put the file somewhere a browser can fetch it (GitHub Pages, next to NowLine, works without the
+To use it, put the file somewhere a browser can fetch it (GitHub Pages, next to RoomHop, works without the
 relay), then under **Load schedule… → From a link** fill in **Venue file URL** next to the feed link. The
 venue is then carried in **Share…** links and room signs as `&venue=<url>`, so scanning phones get the same
-walk times. A self-hosted copy can set it in `nowline.config.json` instead (see [self-host.md](self-host.md)).
+walk times. A self-hosted copy can set it in `roomhop.config.json` instead (see [self-host.md](self-host.md)).
 If the venue file can't be loaded from a link, the schedule still loads with placeholder walk times.
 
 Fetching tries the URL directly first and only uses the [relay](relay.md) if that fails, so a feed or venue
-file on a host that sends CORS headers (or on the same site as NowLine) never goes through it.
+file on a host that sends CORS headers (or on the same site as RoomHop) never goes through it.

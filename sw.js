@@ -1,6 +1,6 @@
-// NowLine service worker: makes the app installable and lets it open with no network.
+// RoomHop service worker: makes the app installable and lets it open with no network.
 // Registered by src/sw-register.js. All URLs are relative to this file, so it works at / and at a
-// sub-path like https://bnelford.github.io/nowline/.
+// sub-path like https://bnelford.github.io/roomhop/.
 //
 // - Navigations: network first, falling back to the cached index.html when offline.
 // - Same-origin static files: stale-while-revalidate (answer from cache, refresh in the background).
@@ -9,7 +9,7 @@
 // VERSION names the cache. Bump it by hand when needed; scripts/site.js replaces it with a hash of the
 // site's files when building the Pages artifact, so every deploy with changed files gets a fresh cache.
 const VERSION = 'dev';
-const CACHE = 'nowline-' + VERSION;
+const CACHE = 'roomhop-' + VERSION;
 
 // Everything the app needs to start. test/unit/sw.test.js checks this against src/, vendor/ and the manifest.
 const PRECACHE = [
@@ -53,7 +53,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter((k) => k.startsWith('nowline-') && k !== CACHE).map((k) => caches.delete(k)));
+    await Promise.all(keys.filter((k) => k.startsWith('roomhop-') && k !== CACHE).map((k) => caches.delete(k)));
     await self.clients.claim();
   })());
 });

@@ -1,4 +1,4 @@
-/* NowLine schedule model + importers (pure: no DOM, no storage).
+/* RoomHop schedule model + importers (pure: no DOM, no storage).
    Every importer produces the normalized shape:
    { name, buildings:{id:{name,color,walk:{id:min}}},
      venues:[{id,name,building}],

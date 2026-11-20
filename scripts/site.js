@@ -1,6 +1,6 @@
 // Copies the files the deployed site needs into _site/ (or the folder given). Nothing is compiled:
 // it's the same set you'd copy to any static host by hand. Used by .github/workflows/pages.yml and by
-// the Playwright "subpath" project, which serves this folder under /nowline/ like GitHub Pages does.
+// the Playwright "subpath" project, which serves this folder under /roomhop/ like GitHub Pages does.
 // The one change made on the way: sw.js gets a cache version that is a hash of the staged files, so a
 // deploy that changes anything replaces visitors' offline cache, and an unchanged deploy keeps it.
 // Usage: node scripts/site.js [out-dir]
@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 export const SITE_FILES = ['index.html', 'organizers.html', 'docs', 'manifest.webmanifest', 'sw.js', 'src', 'vendor', 'assets'];
 // copied only when present: a self-hoster's config, and a venue overlay it may point at (docs/self-host.md)
-export const OPTIONAL_FILES = ['nowline.config.json', 'venue.json'];
+export const OPTIONAL_FILES = ['roomhop.config.json', 'venue.json'];
 
 // Hash of every file under `dir` (paths and contents, in a stable order). Run it before stamping sw.js.
 export function contentHash(dir) {

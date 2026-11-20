@@ -1,5 +1,5 @@
 // Minimal static file server for local development and the Playwright smoke test.
-// NowLine itself needs no server code: any static host works (see README).
+// RoomHop itself needs no server code: any static host works (see README).
 // Usage: node scripts/serve.js [port] [--root dir] [--base /path/]
 //   port    default 8080, or $PORT
 //   --root  folder to serve (default: the repo), e.g. _site from scripts/site.js
@@ -28,7 +28,7 @@ const types = {
 
 http.createServer((req, res) => {
   let urlPath = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
-  if (urlPath + '/' === base) { res.writeHead(301, { location: base }).end(); return; }   // /nowline → /nowline/
+  if (urlPath + '/' === base) { res.writeHead(301, { location: base }).end(); return; }   // /roomhop → /roomhop/
   if (!urlPath.startsWith(base)) { res.writeHead(404, { 'content-type': 'text/plain' }).end('Not found'); return; }
   urlPath = '/' + urlPath.slice(base.length);
   let file = path.join(root, urlPath);
@@ -38,4 +38,4 @@ http.createServer((req, res) => {
     if (err) { res.writeHead(404, { 'content-type': 'text/plain' }).end('Not found'); return; }
     res.writeHead(200, { 'content-type': types[path.extname(file)] || 'application/octet-stream' }).end(body);
   });
-}).listen(port, () => console.log(`NowLine at http://localhost:${port}${base}`));
+}).listen(port, () => console.log(`RoomHop at http://localhost:${port}${base}`));

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 // Installable and offline: once the service worker (sw.js) controls the page, a reload with no network
-// still opens the app from cache. Runs at / and under /nowline/ (see playwright.config.js).
+// still opens the app from cache. Runs at / and under /roomhop/ (see playwright.config.js).
 test('works offline after the first visit', async ({ browser, baseURL }) => {
   const ctx = await browser.newContext({ timezoneId: 'America/Los_Angeles', locale: 'en-US' });
   const page = await ctx.newPage();

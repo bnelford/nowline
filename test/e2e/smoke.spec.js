@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { test, expect } from '@playwright/test';
 
-// A fork's own nowline.config.json (docs/self-host.md) would load its real feed here: the tests always see none
+// A fork's own roomhop.config.json (docs/self-host.md) would load its real feed here: the tests always see none
 // unless they serve one themselves.
-const CONFIG = '**/nowline.config.json';
+const CONFIG = '**/roomhop.config.json';
 const noConfig = (target) => target.route(CONFIG, (r) => r.fulfill({ status: 404, body: 'Not found' }));
 test.beforeEach(async ({ page }) => { await noConfig(page); });
 // Organizer controls (Load schedule…, Room signs…, + Block, Time zone…) sit in the "⋯ More" sheet.
@@ -14,8 +14,8 @@ const more = async (page, sel) => { await page.locator('#moreBtn').click(); awai
 test('demo → skip tour → import → star → conflicting block → warning → room signs', async ({ page, baseURL }) => {
   const problems = [];
   page.on('pageerror', (e) => problems.push('pageerror: ' + e.message));
-  // nowline.config.json is optional (docs/self-host.md): its 404 is expected
-  const optional = (u) => /\/nowline\.config\.json$/.test(u || '');
+  // roomhop.config.json is optional (docs/self-host.md): its 404 is expected
+  const optional = (u) => /\/roomhop\.config\.json$/.test(u || '');
   page.on('console', (m) => { if (m.type() === 'error' && !optional(m.location().url)) problems.push('console: ' + m.text()); });
   page.on('response', (r) => { if (r.status() >= 400 && !optional(r.url())) problems.push(`${r.status()} ${r.url()}`); });
 
@@ -77,8 +77,8 @@ test('demo → skip tour → import → star → conflicting block → warning �
 });
 
 // Room signs for a schedule loaded from a link carry ?feed=, so a phone that has never opened
-// NowLine loads that schedule on the first scan. The feed host is faked with page.route.
-const FEED = 'https://feeds.nowline.test/simple.json';
+// RoomHop loads that schedule on the first scan. The feed host is faked with page.route.
+const FEED = 'https://feeds.roomhop.test/simple.json';
 // Serves the fixture at FEED, and through the default relay (app.js DEFAULT_RELAY) so tests never hit the real one.
 const serveFeed = async (ctx, status = 200) => {
   const reply = (r) => r.fulfill({ status, path: 'fixtures/simple.json', contentType: 'application/json' });
@@ -118,7 +118,7 @@ test('sign from a feed-loaded schedule opens that schedule and room on a fresh d
   await expect(org.page.locator('#sheet h2')).toHaveText('Cafe');
   await org.ctx.close();
 
-  // attendee: never opened NowLine
+  // attendee: never opened RoomHop
   const att = await fresh(browser);
   const problems = [];
   att.page.on('pageerror', (e) => problems.push('pageerror: ' + e.message));
@@ -355,7 +355,7 @@ test('feed refresh: a moved room updates the timeline and tells you; a failed fe
   await ctx.close();
 });
 
-test('a shared link through a relay other than NowLine’s always asks and names the relay, even over the demo', async ({ browser, baseURL }) => {
+test('a shared link through a relay other than RoomHop’s always asks and names the relay, even over the demo', async ({ browser, baseURL }) => {
   const { ctx, page } = await fresh(browser);
   let hit = false;
   await ctx.route((u) => u.hostname === 'relay.example.net', (r) => { hit = true; return r.abort(); });
@@ -368,7 +368,7 @@ test('a shared link through a relay other than NowLine’s always asks and names
 
 test('a malformed #here- fragment or a damaged save does not stop the app', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-11-12T07:00:00-08:00') });
-  await page.addInitScript(() => localStorage.setItem('nowline:data', '{"name":"Broken","sessions":5}'));
+  await page.addInitScript(() => localStorage.setItem('roomhop:data', '{"name":"Broken","sessions":5}'));
   const errs = [];
   page.on('pageerror', (e) => errs.push(e.message));
   await page.goto('./#here-%E0%A4');
@@ -377,9 +377,9 @@ test('a malformed #here- fragment or a damaged save does not stop the app', asyn
   expect(errs).toEqual([]);
 });
 
-/* ---------- organizer features: venue overlay, attendee mode, print all, embed, nowline.config.json ---------- */
-const PRETALX = 'https://feeds.nowline.test/pretalx.json';
-const VENUE = 'https://venues.nowline.test/venue.json';
+/* ---------- organizer features: venue overlay, attendee mode, print all, embed, roomhop.config.json ---------- */
+const PRETALX = 'https://feeds.roomhop.test/pretalx.json';
+const VENUE = 'https://venues.roomhop.test/venue.json';
 const venueJson = {
   buildings: {
     hall: { name: 'Hall', color: '#112233', walk: { hall: 1, annex: 6 } },
@@ -440,9 +440,9 @@ test('venue overlay: &venue= replaces placeholder walk times, travels in share a
 });
 
 test('feed fetch goes direct first, and falls back to the relay only when that fails', async ({ browser, baseURL }) => {
-  const relay = 'https://nowline-relay.example.test/?url=';
+  const relay = 'https://roomhop-relay.example.test/?url=';
   const link = baseURL + '?feed=' + encodeURIComponent(FEED) + '&relay=' + encodeURIComponent(relay);
-  const viaRelay = async (ctx, hits) => ctx.route((u) => u.hostname === 'nowline-relay.example.test' && u.searchParams.get('url') === FEED,
+  const viaRelay = async (ctx, hits) => ctx.route((u) => u.hostname === 'roomhop-relay.example.test' && u.searchParams.get('url') === FEED,
     (r) => { hits.push(1); r.fulfill({ status: 200, path: 'fixtures/simple.json', contentType: 'application/json' }); });
 
   const a = await fresh(browser), aHits = [];
@@ -486,7 +486,7 @@ test('attendee mode: share links and a configured feed hide organizer controls u
   await serveConfig(cfg);
   await s.page.goto(baseURL);
   await expect(s.page.locator('#confName')).toHaveText('My meetup');
-  await expect(s.page).toHaveTitle('Acme Conf · NowLine');
+  await expect(s.page).toHaveTitle('Acme Conf · RoomHop');
   await expect(s.page.locator('.tcard')).toHaveCount(0);
   await expect(s.page.locator('#tourBtn')).toBeHidden();
   await orgTools(s.page, 'toBeHidden');
@@ -544,7 +544,7 @@ test('embed mode: no header, organizer controls or tour, and nothing written to 
   await expect(page.locator('#sheet.show')).toHaveCount(0);                  // no "Load this schedule?" prompt
   await page.locator('#hereSel').selectOption('Stage');
   expect(new URL(page.url()).searchParams.get('feed')).toBe(FEED);           // kept: nothing is stored, so a reload needs it
-  expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('nowline:')))).toEqual([]);
+  expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('roomhop:')))).toEqual([]);
   await page.reload();
   await expect(page.locator('.lane:not(.me) .s', { hasText: 'Welcome' })).toBeVisible();
   await ctx.close();

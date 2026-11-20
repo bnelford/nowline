@@ -247,7 +247,7 @@ describe('sign links: optional tz=', () => {
   it('ignores tz without a feed or when malformed, and strips it with the feed', () => {
     expect(parseSignLink('https://x.org/?tz=Europe/Brussels#here-a').tz).toBeNull();
     expect(parseSignLink('https://x.org/?feed=' + encodeURIComponent(feed) + '&tz=%3Cscript%3E#here-a').tz).toBeNull();
-    expect(withoutFeed('https://x.org/nowline/?feed=' + encodeURIComponent(feed) + '&tz=Asia/Tokyo#here-a')).toBe('https://x.org/nowline/#here-a');
+    expect(withoutFeed('https://x.org/roomhop/?feed=' + encodeURIComponent(feed) + '&tz=Asia/Tokyo#here-a')).toBe('https://x.org/roomhop/#here-a');
   });
 });
 

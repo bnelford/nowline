@@ -28,7 +28,7 @@ In scope:
   an `.ics` file, or a `#here-…` link.
 - The web app's handling of room-sign links, including the `feed=` and `relay=` parameters, which
   make the app fetch and load a schedule.
-- The optional feed relay (`nowline-feed-relay.js`), for example ways to make it fetch hosts outside
+- The optional feed relay (`roomhop-relay.js`), for example ways to make it fetch hosts outside
   its `ALLOWED_HOSTS` list (including through redirects), reach IP literals or local names, or
   bypass its size cap or timeout. The relay checks hostnames, not resolved addresses. A deployment
   whose `ALLOWED_HOSTS` lists a domain the operator doesn't trust is a configuration problem, not a

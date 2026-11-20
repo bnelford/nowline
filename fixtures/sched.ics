@@ -1,6 +1,6 @@
 BEGIN:VCALENDAR
 VERSION:2.0
-PRODID:-//NowLine//Sched-like test fixture//EN
+PRODID:-//RoomHop//Sched-like test fixture//EN
 CALSCALE:GREGORIAN
 METHOD:PUBLISH
 X-WR-CALNAME:FixtureCon 2026

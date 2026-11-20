@@ -1,5 +1,5 @@
 name: Bug report
-description: Something in NowLine doesn't work as expected
+description: Something in RoomHop doesn't work as expected
 labels: [bug]
 body:
   - type: markdown

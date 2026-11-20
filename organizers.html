@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NowLine for organizers</title>
+<title>RoomHop for organizers</title>
 <meta name="description" content="A live timeline for your conference schedule. Paste your feed link, share one link, print a QR sign per room. Free, open source, no accounts.">
 <link rel="icon" href="./assets/brand/favicon.svg" type="image/svg+xml">
 <style>
@@ -67,21 +67,21 @@ footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--line);font-si
 </head>
 <body>
 <header>
-  <a href="./"><img class="logo-dark" src="./assets/brand/logo-dark.svg" alt="NowLine" width="215" height="44"><img class="logo-light" src="./assets/brand/logo.svg" alt="NowLine" width="215" height="44"></a>
-  <a class="cta" href="./">Open NowLine</a>
+  <a href="./"><img class="logo-dark" src="./assets/brand/logo-dark.svg" alt="RoomHop" width="215" height="44"><img class="logo-light" src="./assets/brand/logo.svg" alt="RoomHop" width="215" height="44"></a>
+  <a class="cta" href="./">Open RoomHop</a>
 </header>
 
 <main>
 <h1>Your conference schedule, live.</h1>
-<p class="lede">NowLine turns the schedule you already publish into a live timeline on every attendee's
+<p class="lede">RoomHop turns the schedule you already publish into a live timeline on every attendee's
 phone: what's on now, what's next, and whether they'll make the walk to their next session.</p>
 <p class="dim">It reads Sched, pretalx, Sessionize, or any whole-event <code>.ics</code> export. Your schedule
-tool stays the source of truth. NowLine isn't a CFP, ticketing or schedule-authoring tool.</p>
+tool stays the source of truth. RoomHop isn't a CFP, ticketing or schedule-authoring tool.</p>
 
 <section>
 <h2>Three steps</h2>
 <ol class="steps">
-  <li><span class="n">1</span><b>Paste your feed link</b>Open NowLine, choose <i>⋯ More → Load schedule…</i>, and paste your
+  <li><span class="n">1</span><b>Paste your feed link</b>Open RoomHop, choose <i>⋯ More → Load schedule…</i>, and paste your
     Sched, pretalx or Sessionize export URL.</li>
   <li><span class="n">2</span><b>Share</b><i>Share…</i> gives you one link that opens your schedule on any phone.
     Post it in the event chat, the app, or the welcome email.</li>
@@ -111,7 +111,7 @@ tool stays the source of truth. NowLine isn't a CFP, ticketing or schedule-autho
   <li>Fetching your feed goes through a small relay, which sees the feed URL and the phone's IP
     address. Run your own relay to keep that in-house.</li>
 </ul>
-<p class="dim">Details: <a href="https://github.com/bnelford/nowline/blob/main/PRIVACY.md">PRIVACY.md</a></p>
+<p class="dim">Details: <a href="https://github.com/bnelford/roomhop/blob/main/PRIVACY.md">PRIVACY.md</a></p>
 </section>
 </div>
 
@@ -128,10 +128,10 @@ tool stays the source of truth. NowLine isn't a CFP, ticketing or schedule-autho
 <section>
 <h2>Deploy your own</h2>
 <p>Fork the repository and turn on GitHub Pages, or copy the static files to any web host. Add a
-<code>nowline.config.json</code> for your event's name and branding, and deploy your own relay with
+<code>roomhop.config.json</code> for your event's name and branding, and deploy your own relay with
 one command if your schedule is on a host the public relay doesn't allow.</p>
-<p class="dim"><a href="https://github.com/bnelford/nowline/blob/main/docs/self-host.md">Self-hosting guide</a> ·
-<a href="https://github.com/bnelford/nowline/blob/main/docs/relay.md">Relay guide</a></p>
+<p class="dim"><a href="https://github.com/bnelford/roomhop/blob/main/docs/self-host.md">Self-hosting guide</a> ·
+<a href="https://github.com/bnelford/roomhop/blob/main/docs/relay.md">Relay guide</a></p>
 </section>
 </div>
 
@@ -140,19 +140,19 @@ one command if your schedule is on a host the public relay doesn't allow.</p>
 <div class="gifs">
   <a href="docs/demo.gif"><img src="docs/demo.gif" width="400" height="760" loading="lazy" alt="Timeline: rooms as swim lanes, a red now-line moving across them, and a tight-connection warning"><span>What's on now, and whether you'll make your next session</span><span class="print-only"><br>docs/demo.gif</span></a>
   <a href="docs/demo-map.gif"><img src="docs/demo-map.gif" width="400" height="760" loading="lazy" alt="Map view: rooms listed by walking time, and a dashed walking route between buildings"><span>The walk between rooms, with times and the route</span><span class="print-only"><br>docs/demo-map.gif</span></a>
-  <a href="docs/demo-scan.gif"><img src="docs/demo-scan.gif" width="400" height="760" loading="lazy" alt="A phone scans a room sign's QR code and NowLine opens with 'You're here: Workshop B'"><span>Lost? Scan here. A room sign tells the phone where it is</span><span class="print-only"><br>docs/demo-scan.gif</span></a>
+  <a href="docs/demo-scan.gif"><img src="docs/demo-scan.gif" width="400" height="760" loading="lazy" alt="A phone scans a room sign's QR code and RoomHop opens with 'You're here: Workshop B'"><span>Lost? Scan here. A room sign tells the phone where it is</span><span class="print-only"><br>docs/demo-scan.gif</span></a>
 </div>
 </section>
 
 <section>
 <h2>Questions</h2>
-<p>Open an issue on GitHub: <a href="https://github.com/bnelford/nowline/issues">github.com/bnelford/nowline/issues</a>.
-To try it, <a href="./">open NowLine</a>: the demo is always mid-conference.</p>
+<p>Open an issue on GitHub: <a href="https://github.com/bnelford/roomhop/issues">github.com/bnelford/roomhop/issues</a>.
+To try it, <a href="./">open RoomHop</a>: the demo is always mid-conference.</p>
 </section>
 </main>
 
 <footer>
-NowLine is licensed under the Apache License 2.0. It isn't affiliated with Sched, pretalx or Sessionize.
+RoomHop is licensed under the Apache License 2.0. It isn't affiliated with Sched, pretalx or Sessionize.
 </footer>
 </body>
 </html>

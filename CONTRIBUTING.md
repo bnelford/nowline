@@ -1,6 +1,6 @@
-# Contributing to NowLine
+# Contributing to RoomHop
 
-Thanks for helping. NowLine is small on purpose, and these notes are mostly about keeping it that way.
+Thanks for helping. RoomHop is small on purpose, and these notes are mostly about keeping it that way.
 
 ## Ground rules
 
@@ -9,7 +9,7 @@ Thanks for helping. NowLine is small on purpose, and these notes are mostly abou
   modules.
 - **No required backend.** All personal data stays in the browser. Server-side pieces, like the feed
   relay, must stay optional, and the app must work without them.
-- **Read, don't replace.** NowLine reads exports from Sched, pretalx (and frab), Sessionize, and other
+- **Read, don't replace.** RoomHop reads exports from Sched, pretalx (and frab), Sessionize, and other
   tools that publish a whole-event `.ics`. It isn't a scheduling, CFP or registration system. Other
   sources, Indico for example, aren't supported; open an issue before starting an importer.
 - **Keep pure logic pure.** Parsing, normalizing, and agenda/walk-time logic go in `src/*.js`
@@ -33,7 +33,7 @@ Unit tests run with `TZ=UTC` (set in `vitest.config.js`) because floating `.ics`
 Sessionize timestamps are read in the device's time zone when the event's zone is unknown. The E2E
 tests pin the browser to `America/Los_Angeles` and fix the clock. They run twice: once from the repo
 root, and once (the `subpath` project) against only the files in `scripts/site.js`, served under
-`/nowline/` the way GitHub Pages serves this repo. Use relative paths (`./…`) for anything the page
+`/roomhop/` the way GitHub Pages serves this repo. Use relative paths (`./…`) for anything the page
 loads, and in `page.goto`.
 
 Store times as real instants (ms since epoch). Format and do day arithmetic with the helpers in
@@ -65,5 +65,5 @@ By contributing, you agree that your contributions are licensed under the
 [Apache License 2.0](LICENSE), as described in section 5 of the license.
 
 Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md). Report
-conduct concerns privately to <nelfordbc+nowlineconduct@gmail.com>. Report security issues privately
+conduct concerns privately to <nelfordbc+roomhopconduct@gmail.com>. Report security issues privately
 as described in [SECURITY.md](SECURITY.md), not in public issues.

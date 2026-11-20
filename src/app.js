@@ -1,5 +1,5 @@
 /* ============================================================
-   NowLine — the UI. No build step, no backend. Pure logic lives in
+   RoomHop — the UI. No build step, no backend. Pure logic lives in
    sibling modules (schedule.js, ics.js, agenda.js, signs.js, stars.js);
    see schedule.js for the normalized data shape.
    ============================================================ */
@@ -15,9 +15,9 @@ import { deviceZone, validZone, zoneList, searchZones, zonedToUtc, dayKey as day
 import { SAMPLE_SIMPLE } from './samples.js';
 
 const store = {
-  get(k,d){try{const v=localStorage.getItem('nowline:'+k);return v?JSON.parse(v):d}catch(e){return d}},
-  set(k,v){try{localStorage.setItem('nowline:'+k,JSON.stringify(v));return true}catch(e){return false}},   // false: not saved (e.g. quota)
-  del(k){try{localStorage.removeItem('nowline:'+k)}catch(e){}}
+  get(k,d){try{const v=localStorage.getItem('roomhop:'+k);return v?JSON.parse(v):d}catch(e){return d}},
+  set(k,v){try{localStorage.setItem('roomhop:'+k,JSON.stringify(v));return true}catch(e){return false}},   // false: not saved (e.g. quota)
+  del(k){try{localStorage.removeItem('roomhop:'+k)}catch(e){}}
 };
 // Kokoro-82M voiceover clips, one per TOUR step (see THIRD_PARTY.md); missing clips fall back to speechSynthesis
 // Public feed relay used when the Relay URL field is empty ('' = none; see docs/relay.md)
@@ -435,7 +435,7 @@ function openBlock(id,prefill){
   const dur=Math.round((b.end-b.start)/MIN), durs=[15,30,45,60,90,120,180];
   if(!durs.includes(dur)) durs.push(dur), durs.sort((a,b)=>a-b);
   openSheet(`<h2>${existing?'Edit block':'Block time'}</h2>
-    <div class="note">A meeting, call or break that's yours. Attach it to a room (or the spot next to it) and NowLine will check your walk to whatever's next.</div>
+    <div class="note">A meeting, call or break that's yours. Attach it to a room (or the spot next to it) and RoomHop will check your walk to whatever's next.</div>
     <div class="form">
       <label>What<input id="bTitle" placeholder="e.g. Coffee with Acme" value="${esc(b.title)}"></label>
       <div class="two">
@@ -632,14 +632,14 @@ function signImage(v,base,copy){
   else y+=32;
   lines.forEach(l=>{x.fillText(l,(W-x.measureText(l).width)/2,y);y+=lh;});
   x.fillStyle='#8a93a6';x.font='500 22px -apple-system,Segoe UI,Roboto,sans-serif';
-  const foot=(CFG.name||'NowLine')+' · '+roomSlug(v); x.fillText(foot,(W-x.measureText(foot).width)/2,H-36);
+  const foot=(CFG.name||'RoomHop')+' · '+roomSlug(v); x.fillText(foot,(W-x.measureText(foot).width)/2,H-36);
   return c.toDataURL('image/png');
 }
 function openSigns(){
   const base=signBase(), copy=store.get('signText',DEFAULT_SIGN_TEXT), src=signSource();
   openSheet(`<h2>Room signs</h2>
-    <div class="note">One QR sign per room. Scanning it opens NowLine, sets “I'm here” to that room and shows directions to the person's next stop. Long-press (or right-click) a sign to save it, then print. Set the page link to the public address where attendees can open NowLine.</div>
-    ${src?`<div class="okbox" id="sgFeed">The QR links include this schedule's feed (${esc(src.feed)}), so a phone that has never opened NowLine loads it on the first scan.</div>`
+    <div class="note">One QR sign per room. Scanning it opens RoomHop, sets “I'm here” to that room and shows directions to the person's next stop. Long-press (or right-click) a sign to save it, then print. Set the page link to the public address where attendees can open RoomHop.</div>
+    ${src?`<div class="okbox" id="sgFeed">The QR links include this schedule's feed (${esc(src.feed)}), so a phone that has never opened RoomHop loads it on the first scan.</div>`
       :data.name.startsWith('Demo')?'':`<div class="warnbox" id="sgWarn">⚠ This schedule was loaded from a file or pasted text, so the QR links can't carry it. A phone that hasn't already loaded this schedule will see the demo instead. To make signs work on any phone, load the schedule from its feed link (Load schedule… → From a link), then generate the signs again.</div>`}
     <div class="form">
       <label>Sign text<textarea id="sgText" style="min-height:60px">${esc(copy)}</textarea></label>
@@ -667,7 +667,7 @@ $('signsBtn').onclick=openSigns;
 function openShare(){
   const src=signSource(), link=src&&shareLink(signBase(),src);
   openSheet(`<h2>Share this schedule</h2>
-    ${link?`<div class="note">Anyone who opens this link gets “${esc(data.name)}” loaded from its feed, even on a phone that has never opened NowLine. Post it in the event's chat or put it on a slide.</div>
+    ${link?`<div class="note">Anyone who opens this link gets “${esc(data.name)}” loaded from its feed, even on a phone that has never opened RoomHop. Post it in the event's chat or put it on a slide.</div>
       <div class="form"><input id="shLink" readonly value="${esc(link)}"></div>
       <div class="row">${navigator.share?'<button class="btn on" id="shGo">Share…</button>':''}<button class="btn${navigator.share?'':' on'}" id="shCopy">Copy link</button><button class="btn" id="closeS">Close</button></div>`
     :`<div class="warnbox" id="shWarn">⚠ ${data.name.startsWith('Demo')?'The demo has no link to share.':'This schedule was loaded from a file or pasted text, so there is no link to share.'} Load a schedule from its feed link (Load schedule… → From a link) to get a link anyone can open.</div>
@@ -841,13 +841,13 @@ window.addEventListener('resize',()=>{if(VIEW==='map') renderMap(true);});
 const TOUR=[
   {ttl:'The problem', say:"Ever stood in a conference hallway with no idea what's on right now, or where it is?", scene:'mess'},
   {ttl:'The problem', say:"Ever wondered: where am I? Do I have time to get to my session?", scene:'mess2'},
-  {ttl:'Meet NowLine', say:"Meet NowLine. Every room is a swim lane, and the red line is right now. It moves with the clock, so the schedule always starts from where you are in time.",
+  {ttl:'Meet RoomHop', say:"Meet RoomHop. Every room is a swim lane, and the red line is right now. It moves with the clock, so the schedule always starts from where you are in time.",
     before:async()=>{closeSheet();S.radius='all';S.here=null;S.follow=true;setClock(Date.now(),1);}, target:()=>$('tl')},
   {ttl:'Time moves', say:"Watch an hour go by. Sessions fill in as they run, and fade once they're over.",
     before:async()=>{S.follow=true;setClock(now(),600);}, after:async()=>{setClock(Date.now(),1);}, target:()=>$('nowline'), pad:30},
   {ttl:'Now & next', say:"Up top: what's live this minute, and what starts in the next forty-five, with a heads-up when you need to leave.", target:()=>$('strip')},
   {ttl:'Where am I?', say:"Lost? Every room has a sign. Scan it with your phone's camera.", scene:'scan'},
-  {ttl:"You're here", say:"NowLine now knows you're in Workshop B. It shows what's on in this room, and routes you to your next stop, with a leave-by time.",
+  {ttl:"You're here", say:"RoomHop now knows you're in Workshop B. It shows what's on in this room, and routes you to your next stop, with a leave-by time.",
     before:async()=>{S.here='wb';store.set('here:'+evKey(),'wb');renderAll();openHere('wb');await sleep(450);},
     target:()=>{const el=$('sheet').querySelector('.okbox,.warnbox');if(el)el.scrollIntoView({block:'center'});return el;}, pad:8},
   {ttl:'Step by step', say:"Turn by turn: cross the street, follow the Expo signs, the coffee bar is on your right.",
@@ -857,12 +857,12 @@ const TOUR=[
   {ttl:'On the map', say:"Prefer a map? See where you are, which talks are live around you, how many minutes' walk each one is, and the route there.", view:'map',
     before:async()=>{S.radius='all';S.here='wb';mapRoute='hall';setView('map');const a=venueById('wb'),b=venueById('hall');if(a&&b)fitRoute(a,b);await sleep(300);},
     target:()=>$('mapBox'), pad:0},
-  {ttl:'Will I make it?', say:"Add your own meetings to the Me lane. NowLine checks the walk between everything, and warns you before you're late.",
+  {ttl:'Will I make it?', say:"Add your own meetings to the Me lane. RoomHop checks the walk between everything, and warns you before you're late.",
     before:async()=>{S.radius='all';S.follow=true;renderAll();const w=document.querySelector('.cf');if(w){S.follow=false;const tl=$('tl');tl.scrollLeft=Math.max(0,104+w.offsetLeft-tl.clientWidth*0.6);}await sleep(400);},
     target:()=>document.querySelector('.lane.me'), pad:4},
   {ttl:'The warning', say:"Three minutes between your client coffee and the workshop, but it's a six minute walk. Now you know, before it happens.",
     before:async()=>{$('strip').scrollLeft=0;}, target:()=>document.querySelector('.card.warn')||$('strip')},
-  {ttl:'NowLine', say:"NowLine. Know what's on, where you are, and whether you'll make it. Open source, and coming to a conference near you.", scene:'end'},
+  {ttl:'RoomHop', say:"RoomHop. Know what's on, where you are, and whether you'll make it. Open source, and coming to a conference near you.", scene:'end'},
 ];
 const T={on:false,i:0,token:0,muted:store.get('tourMuted',false),voice:null,timer:null,raf:null};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -934,12 +934,12 @@ function setScene(kind){
   } else if(kind==='scan'){
     const v=venueById('wb')||data.venues[0];
     const m=document.createElement('div');m.className='scan';
-    m.innerHTML=`<div class="ph"><img alt="" src="${signImage(v,signBase(),store.get('signText',DEFAULT_SIGN_TEXT))}"><div class="ln"></div><div class="ok" id="scanOk">📍 Open NowLine: ${esc(v.name)}</div></div>`;
+    m.innerHTML=`<div class="ph"><img alt="" src="${signImage(v,signBase(),store.get('signText',DEFAULT_SIGN_TEXT))}"><div class="ln"></div><div class="ok" id="scanOk">📍 Open RoomHop: ${esc(v.name)}</div></div>`;
     document.body.appendChild(m);
     setTimeout(()=>{const ok=$('scanOk');if(ok)ok.style.opacity=1;},2200);
   } else if(kind==='end'){
     const m=document.createElement('div');m.className='tcard';
-    m.innerHTML=`<div class="box"><div class="brand" style="font-size:15px">📍</div><h1>Now<span>Line</span></h1><p>Know what's on, where you are, and whether you'll make it.</p><button class="btn on" id="tryIt">Try it yourself</button></div>`;
+    m.innerHTML=`<div class="box"><div class="brand" style="font-size:15px">📍</div><h1>Room<span>Hop</span></h1><p>Know what's on, where you are, and whether you'll make it.</p><button class="btn on" id="tryIt">Try it yourself</button></div>`;
     document.body.appendChild(m); $('tryIt').onclick=endTour;
   }
 }
@@ -1052,7 +1052,7 @@ function openImport(){
     <div class="note">On the event's Sched site, <b>log out</b>, tap <b>Mobile App + iCal</b>, and download or copy the calendar for the <i>whole event</i>. Choose that file below, or paste its text. Any whole-event .ics works (Swapcard, Cvent and others export them too).</div>
     <div class="form" style="margin-top:8px"><input type="file" id="impFile" accept=".ics,.json,text/calendar,application/json"></div>
     <h3>From a link</h3>
-    <div class="form"><input id="impUrl" placeholder="https://yourevent.sched.com/all.ics" value="${esc(store.get('impUrl',''))}"><input id="impRelay" placeholder="${DEFAULT_RELAY?'Relay URL (optional; empty uses the public NowLine relay)':'Relay URL, e.g. https://relay.example.workers.dev/?url='}" value="${esc(store.get('impRelay',''))}"><input id="impVenue" placeholder="Venue file URL (optional): buildings and walk times, see docs/importing.md" value="${esc(store.get('impVenue',''))}"></div>
+    <div class="form"><input id="impUrl" placeholder="https://yourevent.sched.com/all.ics" value="${esc(store.get('impUrl',''))}"><input id="impRelay" placeholder="${DEFAULT_RELAY?'Relay URL (optional; empty uses the public RoomHop relay)':'Relay URL, e.g. https://relay.example.workers.dev/?url='}" value="${esc(store.get('impRelay',''))}"><input id="impVenue" placeholder="Venue file URL (optional): buildings and walk times, see docs/importing.md" value="${esc(store.get('impVenue',''))}"></div>
     <div class="row" style="margin-top:6px"><button class="btn" id="impFetch">Fetch</button></div>
     <div class="note" style="margin-top:4px">Most schedule sites don't let browsers fetch their feeds directly, so fetching by link goes through a small relay${DEFAULT_RELAY?'':' (a Cloudflare Worker; see docs/relay.md). Without one, download the file and choose it above'}.</div>
     <h3>Or paste</h3>
@@ -1088,21 +1088,21 @@ function openImport(){
   };
 }
 
-/* ---------- organizer: venue overlay, nowline.config.json, attendee + embed modes, print all signs ---------- */
+/* ---------- organizer: venue overlay, roomhop.config.json, attendee + embed modes, print all signs ---------- */
 const Q=new URLSearchParams(location.search);
 const EMBED=Q.get('embed')==='1';
 if(EMBED){ store.set=()=>true; store.del=()=>{}; }   // an embedded copy never writes the host page's storage
 let CFG={};
-// nowline.config.json is requested by an inline script in index.html (in parallel with loading the modules);
+// roomhop.config.json is requested by an inline script in index.html (in parallel with loading the modules);
 // a 404, bad JSON or a slow answer all mean the defaults
 async function loadConfig(){
-  const p=window.NOWLINE_CONFIG||fetch('nowline.config.json',{cache:'no-cache'}).then(r=>r.ok?r.json():null);
+  const p=window.ROOMHOP_CONFIG||fetch('roomhop.config.json',{cache:'no-cache'}).then(r=>r.ok?r.json():null);
   const raw=await Promise.race([Promise.resolve(p).catch(()=>null),sleep(1500).then(()=>null)]);
   return sanitizeConfig(raw,location.href);
 }
 function applyConfig(c){
   Object.entries(c.colors||{}).forEach(([k,v])=>document.documentElement.style.setProperty('--'+k,v));
-  if(c.name) document.title=c.name+' · NowLine';
+  if(c.name) document.title=c.name+' · RoomHop';
   if(c.logo){ const img=document.createElement('img'); img.className='logo'; img.src=c.logo; img.alt=c.name||''; document.querySelector('header .brand').before(img); }
   if(c.tour===false) $('tourBtn').style.display='none';
 }
@@ -1116,9 +1116,9 @@ async function fetchVenue(u,r,signal){
 }
 // a feed plus its optional venue overlay; a broken venue file doesn't stop the schedule from loading
 async function fetchSchedule(feed,relay,venue,signal){
-  const [text,v]=await Promise.all([fetchFeed(feed,relay,signal),venue?fetchVenue(venue,relay,signal).catch(e=>{console.warn('NowLine: '+e.message);return null;}):null]);
+  const [text,v]=await Promise.all([fetchFeed(feed,relay,signal),venue?fetchVenue(venue,relay,signal).catch(e=>{console.warn('RoomHop: '+e.message);return null;}):null]);
   let d=parseAny(text);
-  if(v) try{ d=applyVenue(d,v); }catch(e){ console.warn('NowLine: venue file ignored: '+e.message); }
+  if(v) try{ d=applyVenue(d,v); }catch(e){ console.warn('RoomHop: venue file ignored: '+e.message); }
   d.source={feed,relay:relay||null,fetchedAt:Date.now(),...(venue?{venue}:{})};
   return d;
 }
@@ -1192,11 +1192,11 @@ async function loadFromSign(sign){
 }
 function signFeed(sign){
   if(data.source&&data.source.feed===sign.feed&&(data.source.venue||null)===sign.venue){ history.replaceState(null,'',withoutFeed(location.href)); handleHash(); refreshFeed({force:true}); return; }
-  // a relay that isn't NowLine's sees (and could change) the schedule, so always ask and name it
+  // a relay that isn't RoomHop's sees (and could change) the schedule, so always ask and name it
   const odd=sign.relay&&sign.relay!==DEFAULT_RELAY, hostOf=u=>{try{return new URL(u).hostname;}catch(e){return u;}};
   if(data.name.startsWith('Demo')&&!odd){ loadFromSign(sign); return; }
   const host=hostOf(sign.feed);
-  openSheet(`<h2>Load this ${sign.room?"sign's":'shared'} schedule?</h2><div class="note">This ${sign.room?'room sign':'link'} uses a schedule from <b>${esc(host)}</b>${odd?`, fetched through the relay <b id="sfRelay">${esc(hostOf(sign.relay))}</b>, which isn't NowLine's. That server sees the schedule and could change it`:''}. Loading it replaces “${esc(data.name)}” on this device. Your stars and blocks are kept per schedule.</div>
+  openSheet(`<h2>Load this ${sign.room?"sign's":'shared'} schedule?</h2><div class="note">This ${sign.room?'room sign':'link'} uses a schedule from <b>${esc(host)}</b>${odd?`, fetched through the relay <b id="sfRelay">${esc(hostOf(sign.relay))}</b>, which isn't RoomHop's. That server sees the schedule and could change it`:''}. Loading it replaces “${esc(data.name)}” on this device. Your stars and blocks are kept per schedule.</div>
     <div class="row"><button class="btn on" id="sfGo">Load it</button><button class="btn" id="closeS">Keep “${esc(data.name)}”</button></div>`);
   $('sfGo').onclick=()=>loadFromSign(sign);
   $('closeS').onclick=()=>{closeSheet(); history.replaceState(null,'',withoutFeed(location.href)); handleHash();};

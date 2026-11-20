@@ -7,22 +7,22 @@ For the maintainer. Work top to bottom; don't start on the channels until the pr
 
 ## Prerequisites
 
-- [ ] **Decide the name.** Check that "NowLine" is clear to use for this kind of product: search
-      app stores, trademark databases and existing domains, and decide whether to keep it before
-      anything is posted publicly. Renaming after launch breaks links and printed signs.
-      TODO (maintainer): record the decision and what was checked.
+- [x] **Decide the name.** Renamed from NowLine to RoomHop on 2026-11-20 (the old name collided with
+      an active timeline product, `lolay/nowline` / nowline.io). Checked: exact GitHub repo names (1,
+      0 stars), npm (free), a web search for apps of that name (none found).
+      TODO (maintainer): domain availability and a trademark search were not checked.
 - [ ] **Move the relay to your own domain.** The public relay is
       `nowline-relay.nelfordbc.workers.dev`. Share links and signs embed the relay URL, so whatever
       relay is the default at launch is the one printed signs depend on for good. Put it on a domain
       you control (for example `relay.<your-domain>`), make that the default, and keep the
       `workers.dev` one running so links already shared keep working.
       TODO (maintainer): choose the domain.
-- [ ] **One design-partner event.** Run NowLine at one real event with an organizer who has agreed
+- [ ] **One design-partner event.** Run RoomHop at one real event with an organizer who has agreed
       to it, before posting anywhere public. Get their permission before naming them, and only quote
       what they actually said.
       TODO (maintainer): the event, the date, and what you learned.
 - [ ] The parallel features are merged and released: automatic refresh, offline/installable app,
-      `&venue=`, `nowline.config.json`, `?embed=1`, **Print all**, attendee mode. Tag a release and
+      `&venue=`, `roomhop.config.json`, `?embed=1`, **Print all**, attendee mode. Tag a release and
       move them from *Unreleased* in [CHANGELOG.md](../CHANGELOG.md).
 - [ ] `organizers.html` is served by the deployed site. `scripts/site.js` currently copies only
       `index.html`, `src`, `vendor` and `assets`, so it needs `organizers.html` and the GIFs in
@@ -57,19 +57,19 @@ Each step should run on what you learned from the one before. Don't post everywh
 **Title**
 
 ```
-Show HN: NowLine – a live timeline for any conference schedule, with walk times
+Show HN: RoomHop – a live timeline for any conference schedule, with walk times
 ```
 
-**Link:** <https://bnelford.github.io/nowline/>
+**Link:** <https://bnelford.github.io/roomhop/>
 
 **First comment** (post it right after submitting):
 
 ```
-Hi HN, I built NowLine because conference schedules are easy to read in advance and hard to use
+Hi HN, I built RoomHop because conference schedules are easy to read in advance and hard to use
 on the day: you're in a hallway, the grid is six rooms wide, and you don't know whether you can
 get from this talk to the next one before it starts.
 
-NowLine reads the schedule an event already publishes (Sched's iCal feed, pretalx's
+RoomHop reads the schedule an event already publishes (Sched's iCal feed, pretalx's
 schedule.json, Sessionize's API JSON, or any whole-event .ics) and shows it as a live timeline:
 every room is a lane, a red line is "now", and the sessions you star are checked against the walk
 between rooms ("5 min between these, but it's an 8 min walk"). Organizers can print a QR sign per
@@ -93,14 +93,14 @@ What I'd most like to hear: whether your conference's export loads, and what bre
 ## Cold email to organizers
 
 Send from your own address, one at a time, to organizers whose schedule is already public on Sched,
-pretalx or Sessionize. Load their schedule into NowLine first and include the link.
+pretalx or Sessionize. Load their schedule into RoomHop first and include the link.
 
 ```
 Subject: Your <EVENT> schedule as a live timeline
 
 Hi <NAME>,
 
-I maintain NowLine, a free, open-source web app that turns a published conference schedule into
+I maintain RoomHop, a free, open-source web app that turns a published conference schedule into
 a live timeline on attendees' phones: what's on now, what's next, and whether they'll make the
 walk to their next session.
 
@@ -121,6 +121,6 @@ Thanks,
 <PROJECT LINK>
 ```
 
-Before sending: check the share link opens on a phone that has never loaded NowLine, check the time
+Before sending: check the share link opens on a phone that has never loaded RoomHop, check the time
 zone is right (especially for Sessionize, see [platforms/sessionize.md](platforms/sessionize.md)),
 and send at most one follow-up to someone who doesn't reply.

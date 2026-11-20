@@ -1,6 +1,6 @@
 // Writes shields.io endpoint badges (https://shields.io/badges/endpoint-badge) from test reports, so the
 // badges need no third-party coverage service. Used by .github/workflows/pages.yml, which publishes
-// the files with the site at https://bnelford.github.io/nowline/<name>.json.
+// the files with the site at https://bnelford.github.io/roomhop/<name>.json.
 // Inputs (missing ones are skipped): coverage/coverage-summary.json (npm run test:coverage),
 // reports/unit.json (Vitest json reporter), reports/e2e.json (Playwright json reporter).
 // Usage: node scripts/badges.js [out-dir]
@@ -23,7 +23,7 @@ if (cov) {
   badges['coverage-badge.json'] = badge('unit coverage', `${Math.round(pct)}%`, coverageColor(pct));
 }
 
-// Playwright runs each spec once per project (root and /nowline/ sub-path); count a spec once, as passed
+// Playwright runs each spec once per project (root and /roomhop/ sub-path); count a spec once, as passed
 // only if it passed in every project (a pass on retry counts)
 const specs = s => [...(s.specs || []), ...(s.suites || []).flatMap(specs)];
 const unit = read('reports/unit.json'), e2e = read('reports/e2e.json');

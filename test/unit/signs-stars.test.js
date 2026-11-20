@@ -10,16 +10,16 @@ describe('roomSlug / roomLink', () => {
     expect(roomSlug({ id: 11 })).toBe('here-11');
   });
   it('replaces any existing fragment on the base link', () => {
-    expect(roomLink('https://example.org/nowline/?e=1#here-old', { id: 'wb' })).toBe('https://example.org/nowline/?e=1#here-wb');
+    expect(roomLink('https://example.org/roomhop/?e=1#here-old', { id: 'wb' })).toBe('https://example.org/roomhop/?e=1#here-wb');
     expect(roomLink('https://example.org/', { id: 'Room 201' })).toBe('https://example.org/#here-room-201');
   });
 });
 
 describe('room links that carry the schedule feed', () => {
   const feed = 'https://sessionize.com/api/v2/abc123/view/All';
-  const relay = 'https://nowline-relay.example.workers.dev/?url=';
+  const relay = 'https://roomhop-relay.example.workers.dev/?url=';
   it('adds feed and relay to the query, before the room fragment', () => {
-    const link = roomLink('https://example.org/nowline/?e=1#old', { id: 'Room 201' }, { feed, relay });
+    const link = roomLink('https://example.org/roomhop/?e=1#old', { id: 'Room 201' }, { feed, relay });
     const u = new URL(link);
     expect(u.hash).toBe('#here-room-201');
     expect(u.searchParams.get('e')).toBe('1');
@@ -111,10 +111,10 @@ describe('withoutFeed', () => {
 });
 
 describe('sign base default', () => {
-  const href = 'https://events.example.org/nowline/index.html?x=1#here-wb';
+  const href = 'https://events.example.org/roomhop/index.html?x=1#here-wb';
   it('defaults to the current page without its fragment', () => {
-    expect(defaultSignBase(href)).toBe('https://events.example.org/nowline/index.html?x=1');
-    expect(signBaseFrom(null, href)).toBe('https://events.example.org/nowline/index.html?x=1');
+    expect(defaultSignBase(href)).toBe('https://events.example.org/roomhop/index.html?x=1');
+    expect(signBaseFrom(null, href)).toBe('https://events.example.org/roomhop/index.html?x=1');
   });
   it('does not carry the feed the page was opened with', () => {
     expect(defaultSignBase('https://e.example/n/?feed=https%3A%2F%2Fx%2Fa#here-wb')).toBe('https://e.example/n/');

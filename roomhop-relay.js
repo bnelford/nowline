@@ -1,11 +1,11 @@
 /**
- * NowLine feed relay — a tiny Cloudflare Worker that lets a self-hosted NowLine
+ * RoomHop feed relay — a tiny Cloudflare Worker that lets a self-hosted RoomHop
  * fetch public schedule feeds (Sched .ics, Sessionize JSON, pretalx JSON) that
  * browsers can't read directly because those sites don't send CORS headers.
  *
  * Deploy:  npx wrangler deploy        (uses wrangler.toml)
- * Use:     https://nowline-relay.<you>.workers.dev/?url=https%3A%2F%2Fkccncna2026.sched.com%2Fall.ics
- *          (paste "https://nowline-relay.<you>.workers.dev/?url=" into NowLine's "Relay URL" field)
+ * Use:     https://<worker>.<you>.workers.dev/?url=https%3A%2F%2Fkccncna2026.sched.com%2Fall.ics
+ *          (paste "https://<worker>.<you>.workers.dev/?url=" into RoomHop's "Relay URL" field)
  *
  * Only allow-listed schedule hosts are relayed, so this can't be used as an open proxy.
  * The list comes from the ALLOWED_HOSTS variable (wrangler.toml), or DEFAULT_ALLOWED_HOSTS if unset:
@@ -75,7 +75,7 @@ export default {
         const err = checkTarget(url, allow);
         if (err) return fail(403, err);
         upstream = await fetch(url.toString(), {
-          headers: { 'user-agent': 'NowLine-relay/0.1 (+open-source conference timeline)' },
+          headers: { 'user-agent': 'RoomHop-relay/0.1 (+open-source conference timeline)' },
           redirect: 'manual',
           signal: ctl.signal,
           cf: { cacheTtl: 300, cacheEverything: true },

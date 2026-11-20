@@ -8,8 +8,8 @@ If the schedule was loaded **from a link** (Load schedule… → From a link), t
 that feed, plus the relay used to fetch it: `<page link>?feed=<feed URL>&relay=<relay URL>#here-<room-slug>`.
 If the feed has no time zone of its own and you set one under **Time zone…**, the link also carries
 `&tz=<zone>`, so a scanning phone reads the feed's times in the same zone.
-A phone that has never opened NowLine fetches the schedule from it on the first scan, then jumps to
-the room. If a different imported schedule is already stored on the phone, NowLine asks before
+A phone that has never opened RoomHop fetches the schedule from it on the first scan, then jumps to
+the room. If a different imported schedule is already stored on the phone, RoomHop asks before
 replacing it. The `feed`/`relay`/`tz` parameters are removed from the address bar once handled.
 
 The **Page link** defaults to the page you have open, without its `#fragment`. Before printing,
@@ -48,6 +48,6 @@ different meaning in any future release:
 | `#here-<slug>` | The room the sign is for. The slug is the room id, lower-cased, with runs of other characters replaced by `-` |
 
 New parameters may be added, and a sign made today will keep working when they are. If a parameter
-ever stops being needed, NowLine will keep accepting it. What the promise can't cover is the
+ever stops being needed, RoomHop will keep accepting it. What the promise can't cover is the
 outside world: the sign still depends on the page link and the feed URL staying where they are, and
 on the room keeping the same id in the feed.

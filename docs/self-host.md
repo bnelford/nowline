@@ -1,4 +1,4 @@
-# Self-hosting NowLine for your event
+# Self-hosting RoomHop for your event
 
 ## Deploy your own in 5 minutes
 
@@ -6,8 +6,8 @@
 2. **Enable Pages.** In your fork, open *Settings → Pages* and set *Source* to **GitHub Actions**. The
    [Pages workflow](../.github/workflows/pages.yml) runs the tests and publishes the site to
    `https://<you>.github.io/<repo>/` on every push to `main`.
-3. **Edit the config.** Copy [`nowline.config.example.json`](../nowline.config.example.json) to
-   `nowline.config.json` in the repo root, set your event's `name` and `feed`, and commit. If you have a
+3. **Edit the config.** Copy [`roomhop.config.example.json`](../roomhop.config.example.json) to
+   `roomhop.config.json` in the repo root, set your event's `name` and `feed`, and commit. If you have a
    [venue file](importing.md#venue-file-venuejson), commit it as `venue.json` next to it and set
    `"venue": "venue.json"`. Both files are published with the site when present (`scripts/site.js`).
 4. **Print signs.** Open `https://<you>.github.io/<repo>/?admin`, then **⋯ More → Room signs… → Print all**. One sign per
@@ -15,16 +15,16 @@
 
 Attendees who open your site get your schedule straight away: no demo, no tour, and no organizer controls.
 
-## `nowline.config.json`
+## `roomhop.config.json`
 
 Optional. It sits next to `index.html`. If it's missing (404), invalid, or takes longer than 1.5 seconds,
-NowLine uses its defaults. It's requested in parallel with the app's own scripts, so it doesn't hold up
+RoomHop uses its defaults. It's requested in parallel with the app's own scripts, so it doesn't hold up
 loading.
 
 | Field | Type | What it does |
 | --- | --- | --- |
-| `name` | text, up to 80 characters | Page title, and the footer on room signs (`<name> · here-<room>` instead of `NowLine · here-<room>`) |
-| `logo` | URL | Shown before the NowLine name in the header |
+| `name` | text, up to 80 characters | Page title, and the footer on room signs (`<name> · here-<room>` instead of `RoomHop · here-<room>`) |
+| `logo` | URL | Shown before the RoomHop name in the header |
 | `colors` | `{ "accent", "now", "bg" }` | Override the `--accent`, `--now` and `--bg` colors. `#hex` only |
 | `feed` | URL | Schedule loaded instead of the demo when the page isn't opened with a `?feed=` link |
 | `venue` | URL | [Venue file](importing.md#venue-file-venuejson) applied to `feed` |
@@ -37,14 +37,14 @@ match the table is ignored.
 
 A configured feed replaces the demo, and replaces an older configured feed stored on a phone, but never
 a schedule the person loaded themselves. Feeds and venue files are fetched directly first; the relay is
-only used if that fails. A feed on the same site as NowLine, or on a host that sends CORS headers, never
+only used if that fails. A feed on the same site as RoomHop, or on a host that sends CORS headers, never
 touches the relay.
 
-The tests never read your config: they serve a missing `nowline.config.json` unless a test provides one.
+The tests never read your config: they serve a missing `roomhop.config.json` unless a test provides one.
 
 ## Attendee mode
 
-When NowLine is opened from a share link or a room sign, or a config sets `feed`, it starts in attendee
+When RoomHop is opened from a share link or a room sign, or a config sets `feed`, it starts in attendee
 mode: no tour, and the organizer-only controls are hidden (**Load schedule…**, **Room signs…**, **▶ 60×**,
 **−30m** / **+30m**). Add `?admin` to the address, or set `"organizerTools": true`, to show them.
 
@@ -52,7 +52,7 @@ These controls carry the `org-only` class in `index.html`; attendee mode is `bod
 
 ## Embedding
 
-Add `?embed=1` to show NowLine inside another page. The header and the organizer controls are hidden,
+Add `?embed=1` to show RoomHop inside another page. The header and the organizer controls are hidden,
 the tour never starts, and nothing is written to the browser's storage. Pass the schedule in the same
 link, for example the one from **Share…**:
 

@@ -1,4 +1,4 @@
-/* nowline.config.json for self-hosters (pure: no DOM). Optional; see docs/self-host.md.
+/* roomhop.config.json for self-hosters (pure: no DOM). Optional; see docs/self-host.md.
    { name, logo, colors:{accent,now,bg}, feed, venue, relay, tour, organizerTools }
    Everything is untrusted and checked here: unknown or bad fields are dropped, so {} means the defaults. */
 const HEX=/^#[0-9a-f]{3,8}$/i;

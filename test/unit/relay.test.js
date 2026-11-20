@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
-import relay, { DEFAULT_ALLOWED_HOSTS, MAX_BYTES, TIMEOUT_MS, parseAllowList } from '../../nowline-feed-relay.js';
+import relay, { DEFAULT_ALLOWED_HOSTS, MAX_BYTES, TIMEOUT_MS, parseAllowList } from '../../roomhop-relay.js';
 
 let upstream;
 beforeEach(() => {

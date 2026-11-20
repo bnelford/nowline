@@ -1,7 +1,7 @@
 {
   "id": "./",
-  "name": "NowLine — live conference timeline",
-  "short_name": "NowLine",
+  "name": "RoomHop — live conference timeline",
+  "short_name": "RoomHop",
   "description": "What's on now, what's next, and whether you'll make the walk to your next session.",
   "lang": "en",
   "start_url": "./",
