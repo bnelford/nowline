@@ -57,7 +57,7 @@ source of truth; NowLine reads what they already publish.
 
 ## Use it with your conference
 
-Open NowLine, choose **Load schedule…**, and give it the event's export:
+Open NowLine, choose **⋯ More → Load schedule…**, and give it the event's export:
 
 | Platform | Export |
 | --- | --- |

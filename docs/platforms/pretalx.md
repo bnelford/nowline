@@ -56,7 +56,7 @@ a venue overlay with `&venue=<url>` for real walk times (format in [docs/importi
 ## How to test
 
 1. Open the export URL in a browser and check it returns JSON with your sessions.
-2. Open NowLine, choose **Load schedule…**, paste the URL and choose **Fetch**. You should see
+2. Open NowLine, choose **⋯ More → Load schedule…**, paste the URL and choose **Fetch**. You should see
    "Looks good: N sessions in M rooms over D days." A 403 "Host not allowed" means the relay doesn't
    allow your host (see above).
 3. **Load**, check a few sessions, then choose **Share…** and open the link in a private window.

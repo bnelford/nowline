@@ -1,6 +1,6 @@
 # Loading a schedule
 
-Use **Load schedule…** to choose a file, paste text, or fetch a link (fetching needs the
+Use **⋯ More → Load schedule…** to choose a file, paste text, or fetch a link (fetching needs the
 [relay](relay.md)). Tick **Shift dates to today** to try out a past conference as if it
 were live: whole days are moved so the first day is today in the event's time zone, keeping each
 session's wall-clock time.

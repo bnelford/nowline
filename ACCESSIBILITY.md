@@ -14,41 +14,31 @@ whether it works for your event and tell us what's missing.
 - **Times in your zone.** Times can be shown in the event's zone, your device's zone, or any zone you
   choose, with a short label so it's clear which one you're reading.
 
-## Being added now
-
-These are in progress and will be listed in [CHANGELOG.md](CHANGELOG.md) when they land:
-
-- **Keyboard navigation** for the timeline and map: reaching and opening session blocks and rooms
-  without a pointer, with a visible focus indicator.
-- **Screen-reader labels** for icon-only buttons, session blocks (title, room, time, starred), the
-  now-line and the map.
-- **Reduced motion.** Honouring `prefers-reduced-motion` for the pulsing location marker, the
-  animated walking route, sheet transitions and the tour spotlight.
-- **Contrast.** Checking text and controls against AA contrast ratios in the dark theme, including
-  dimmed text and track colours on session blocks.
+- **Keyboard.** Now/next cards, session blocks, room chips and map rooms can be focused and opened
+  with Enter or Space, with a visible focus ring.
+- **Dialogs.** Sheets are `role="dialog"` with `aria-modal`; focus moves in on open, Tab stays
+  inside, Escape closes, and focus returns to the control that opened it.
+- **Labels.** Selects have real labels, icon-only buttons have `aria-label`s, and the now/next strip is
+  a polite live region that announces only when its content changes.
+- **Reduced motion.** With `prefers-reduced-motion`, the pulsing marker, animated route, tour
+  effects, transitions and smooth scrolling are off.
+- **Contrast.** Faint text is `#8a93a6` (about 6.1:1 on the background). Past and out-of-range
+  sessions are dimmed to 70% opacity, which keeps their text at 4.6:1 or more on every track colour.
+- **Tap targets.** Buttons, selects, chips and map rows are at least 44px tall.
 
 ## Known gaps
 
-- **Session blocks and the map are pointer-only.** Session blocks on the timeline are `div`
-  elements with click handlers, and the map is an SVG with pointer and wheel handlers. Neither can be
-  focused or operated from a keyboard yet.
-- **No ARIA labelling.** Icon-only buttons rely on `title` attributes, and the timeline, now-line and
-  map have no accessible names or descriptions.
-- **Motion** is not reduced for users who ask for it.
 - **Colour carries meaning.** Building and track colours, and the red now-line, aren't always backed
   by text.
-- **Faint text fails contrast.** On the `#0e1116` background, the dim text colour `#8a93a6` is about
-  6.1:1 and passes, but the faint colour `#566074` is about 3.0:1, below the 4.5:1 AA minimum for
-  normal text. Text on coloured session blocks hasn't been measured.
-- **The tour** shows each step's narration as on-screen text alongside the voiceover, but it advances
-  on its own timer, and that text isn't announced to screen readers.
+- **The timeline is a visual grid.** It's operable by keyboard, but there's no list view that reads
+  sessions in time order; a screen-reader user hears blocks lane by lane.
+- **The tour** advances on its own timer, and its narration text isn't announced to screen readers.
 - **Room signs** are generated as PNG images. The room name and wording are printed on the sign,
   but the image file itself has no text alternative.
 - **No light theme** for people who need one.
 
-> TODO (maintainer): re-check this list against the app once the keyboard, screen-reader,
-> reduced-motion and contrast work merges, and record which screen readers and browsers it was
-> tested with.
+> TODO (maintainer): record which screen readers and browsers this was tested with.
+
 
 ## Reporting a problem
 

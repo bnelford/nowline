@@ -1,6 +1,6 @@
 # Room signs
 
-**Room signs…** generates one printable PNG sign per room, each with a QR code that links to
+**⋯ More → Room signs…** generates one printable PNG sign per room, each with a QR code that links to
 `<page link>#here-<room-slug>`. Opening that link sets "I'm here" to the room and shows what's on
 there, plus directions and a leave-by time for your next stop.
 

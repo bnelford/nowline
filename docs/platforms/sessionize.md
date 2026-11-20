@@ -47,7 +47,7 @@ add a venue overlay with `&venue=<url>` for real walk times (format in
 
 ## How to test
 
-1. Open NowLine, choose **Load schedule…**, paste the `…/view/All` URL and choose **Fetch**. You
+1. Open NowLine, choose **⋯ More → Load schedule…**, paste the `…/view/All` URL and choose **Fetch**. You
    should see "Looks good: N sessions in M rooms over D days."
 2. **Load**, set the zone under **Time zone…**, and check that a session you know starts at the right
    local time.

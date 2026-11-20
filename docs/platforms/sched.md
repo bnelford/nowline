@@ -42,7 +42,7 @@ event's zone under **Time zone…** before making signs; share links and signs t
 
 ## How to test
 
-1. Open NowLine, choose **Load schedule…**, paste the `all.ics` URL and choose **Fetch**. You should
+1. Open NowLine, choose **⋯ More → Load schedule…**, paste the `all.ics` URL and choose **Fetch**. You should
    see "Looks good: N sessions in M rooms over D days." Check the counts against the Sched site.
 2. **Load**, then check a few sessions you know: title, room, start time and speakers.
 3. Choose **Share…**, open the link in a private window or on another phone, and confirm the same

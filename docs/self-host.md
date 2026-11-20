@@ -10,7 +10,7 @@
    `nowline.config.json` in the repo root, set your event's `name` and `feed`, and commit. If you have a
    [venue file](importing.md#venue-file-venuejson), commit it as `venue.json` next to it and set
    `"venue": "venue.json"`. Both files are published with the site when present (`scripts/site.js`).
-4. **Print signs.** Open `https://<you>.github.io/<repo>/?admin`, then **Room signs… → Print all**. One sign per
+4. **Print signs.** Open `https://<you>.github.io/<repo>/?admin`, then **⋯ More → Room signs… → Print all**. One sign per
    page, each with a QR code for its room.
 
 Attendees who open your site get your schedule straight away: no demo, no tour, and no organizer controls.
