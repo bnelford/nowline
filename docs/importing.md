@@ -69,3 +69,43 @@ within a building and 8 minutes between buildings (3 minutes between floors for 
 - This example (without `timezone`) is [`fixtures/simple.json`](../fixtures/simple.json), and is also
   available in the app as **Insert simple example**. [`fixtures/simple-tz.json`](../fixtures/simple-tz.json)
   shows `timezone` with offset-less times.
+
+## Venue file (`venue.json`)
+
+Sched, Sessionize and pretalx feeds only name rooms, so every room gets the placeholder walk times above.
+A venue file adds the geography to any feed, without editing the feed: buildings, walk minutes between
+them, which building each room is in, directions to each room, and turn-by-turn routes.
+
+```json
+{
+  "buildings": {
+    "hall":  { "name": "Main Hall", "color": "#7cc4ff", "walk": { "hall": 1, "annex": 6 } },
+    "annex": { "name": "Annex",     "color": "#b48cff", "walk": { "annex": 1, "hall": 6 } }
+  },
+  "rooms": {
+    "Main Stage": { "building": "hall",  "where": "Ground floor, through the center doors" },
+    "1234":       { "building": "annex", "where": "1st floor, end of the hall" }
+  },
+  "routes": {
+    "hall>annex": "Leave by the side doors and cross 2nd St.",
+    "annex>hall": "Cross 2nd St to the Main Hall side doors."
+  }
+}
+```
+
+- `rooms` keys are matched against the feed's room **id** first (Sessionize room ids; pretalx room names; the `LOCATION` text in `.ics` feeds such as Sched),
+  then its **name**, ignoring case. Rooms the file doesn't mention keep their placeholder building.
+- `buildings[*].walk` is minutes from this building to the others. Pairs you leave out fall back to 1 minute
+  within a building and 8 between. `routes` is keyed `"<from building id>><to building id>"`.
+- Everything is checked on load: building ids up to 64 characters (no `>`), `#hex` colors only (others get
+  a palette color), walk times must be numbers from 0 to 1440, and names, `where` and route text are plain
+  text (capped at 80, 200 and 500 characters) shown escaped. Anything else is ignored.
+
+To use it, put the file somewhere a browser can fetch it (GitHub Pages, next to NowLine, works without the
+relay), then under **Load schedule… → From a link** fill in **Venue file URL** next to the feed link. The
+venue is then carried in **Share…** links and room signs as `&venue=<url>`, so scanning phones get the same
+walk times. A self-hosted copy can set it in `nowline.config.json` instead (see [self-host.md](self-host.md)).
+If the venue file can't be loaded from a link, the schedule still loads with placeholder walk times.
+
+Fetching tries the URL directly first and only uses the [relay](relay.md) if that fails, so a feed or venue
+file on a host that sends CORS headers (or on the same site as NowLine) never goes through it.

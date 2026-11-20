@@ -77,6 +77,7 @@ schedule on anyone's phone. Post it in the event's chat.
 - [Your agenda](docs/agenda.md): stars, blocks, calendar import, and conflict checks
 - [Room signs](docs/room-signs.md): QR links, feed links, and printing
 - [Feed relay](docs/relay.md): what it allows, its limits, and deploying it
+- [Self-hosting](docs/self-host.md): deploy your own in 5 minutes, `nowline.config.json`, attendee mode, and embedding
 
 ## Development
 

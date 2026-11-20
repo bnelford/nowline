@@ -3,7 +3,8 @@
    sibling modules (schedule.js, ics.js, agenda.js, signs.js, stars.js);
    see schedule.js for the normalized data shape.
    ============================================================ */
-import { MIN, HOUR, normalize, rebaseToToday } from './schedule.js';
+import { MIN, HOUR, normalize, rebaseToToday, applyVenue } from './schedule.js';
+import { sanitizeConfig } from './config.js';
 import { parseICS, scheduleFromICS } from './ics.js';
 import { walkBetween as walkBetweenIn, agendaIssues as agendaIssuesIn } from './agenda.js';
 import { DEFAULT_SIGN_TEXT, roomSlug, roomLink, shareLink, defaultSignBase, signBaseFrom, parseSignLink, withoutFeed } from './signs.js';
@@ -539,7 +540,7 @@ function signImage(v,base,copy){
   else y+=32;
   lines.forEach(l=>{x.fillText(l,(W-x.measureText(l).width)/2,y);y+=lh;});
   x.fillStyle='#8a93a6';x.font='500 22px -apple-system,Segoe UI,Roboto,sans-serif';
-  const foot='NowLine · '+roomSlug(v); x.fillText(foot,(W-x.measureText(foot).width)/2,H-36);
+  const foot=(CFG.name||'NowLine')+' · '+roomSlug(v); x.fillText(foot,(W-x.measureText(foot).width)/2,H-36);
   return c.toDataURL('image/png');
 }
 function openSigns(){
@@ -552,14 +553,14 @@ function openSigns(){
       <label>Sign text<textarea id="sgText" style="min-height:60px">${esc(copy)}</textarea></label>
       <label>Page link (where the QR points)<input id="sgBase" value="${esc(base)}"></label>
     </div>
-    <div class="row"><button class="btn on" id="sgGo">Update signs</button><button class="btn" id="closeS">Close</button></div>
+    <div class="row"><button class="btn on" id="sgGo">Update signs</button><button class="btn" id="sgPrint">Print all</button><button class="btn" id="closeS">Close</button></div>
     <div id="sgOut"></div>`);
   const draw=()=>{
     const b=$('sgBase').value.trim()||defaultSignBase(location.href), t=$('sgText').value.trim()||DEFAULT_SIGN_TEXT;
     // only an organizer override is saved, so the default keeps following wherever this copy is hosted
     b===defaultSignBase(location.href)?store.del('signBase'):store.set('signBase',b); store.set('signText',t);
     $('sgOut').innerHTML=data.venues.map(v=>`<h3>${esc(v.name)}</h3><img alt="QR sign for ${esc(v.name)}" src="${signImage(v,b,t)}" style="width:100%;max-width:420px;border-radius:10px;display:block">
-      <div class="row" style="margin-top:6px"><button class="btn" data-copy="${esc(roomLink(b,v,src))}">Copy link</button><button class="btn" data-try="${esc(v.id)}">Preview scan</button></div>`).join('');
+      ${signLenNote(roomLink(b,v,src))}<div class="row" style="margin-top:6px"><button class="btn" data-copy="${esc(roomLink(b,v,src))}">Copy link</button><button class="btn" data-try="${esc(v.id)}">Preview scan</button></div>`).join('');
     $('sgOut').querySelectorAll('[data-copy]').forEach(el=>el.onclick=()=>{
       const done=()=>{el.textContent='Copied';setTimeout(()=>el.textContent='Copy link',1500);};
       try{navigator.clipboard.writeText(el.dataset.copy).then(done,()=>{el.textContent=el.dataset.copy;});}catch(e){el.textContent=el.dataset.copy;}
@@ -567,6 +568,7 @@ function openSigns(){
     $('sgOut').querySelectorAll('[data-try]').forEach(el=>el.onclick=()=>{S.here=el.dataset.try;store.set('here:'+data.name,S.here);renderAll();openHere(el.dataset.try);});
   };
   $('sgGo').onclick=draw; $('closeS').onclick=closeSheet; draw();
+  $('sgPrint').onclick=()=>{printAllSigns($('sgBase').value.trim()||defaultSignBase(location.href),$('sgText').value.trim()||DEFAULT_SIGN_TEXT);};
 }
 $('signsBtn').onclick=openSigns;
 // A link that opens this schedule on any phone: the same feed/relay/tz a room sign carries, without the room.
@@ -914,14 +916,20 @@ $('tourBtn').onclick=()=>{ if(T.on) endTour(); else startTour(); };
 window.addEventListener('hashchange',()=>{ if(location.hash==='#tour'&&!T.on) tourIntro(); });
 
 const parseAny=txt=>{ const t=txt.replace(/^\uFEFF/,'').trim(); return /^BEGIN:VCALENDAR/i.test(t)?scheduleFromICS(t):normalize(JSON.parse(t)); };
-async function fetchFeed(u,r){ const res=await fetch(r? r+encodeURIComponent(u) : u); if(!res.ok) throw new Error('HTTP '+res.status); return res.text(); }
+// direct first: a same-origin or CORS-enabled feed (or venue file) never touches the relay. The relay is only
+// tried when the direct fetch fails (network/CORS) or isn't OK.
+async function fetchFeed(u,r){
+  try{ const res=await fetch(u); if(res.ok) return await res.text(); if(!r) throw new Error('HTTP '+res.status); }
+  catch(e){ if(!r) throw e; }
+  const res=await fetch(r+encodeURIComponent(u)); if(!res.ok) throw new Error('HTTP '+res.status); return res.text();
+}
 function openImport(){
   openSheet(`<h2>Load a schedule</h2>
     <h3>From Sched (KubeCon, AGNTCon + MCPCon, Open Source Summit…)</h3>
     <div class="note">On the event's Sched site, <b>log out</b>, tap <b>Mobile App + iCal</b>, and download or copy the calendar for the <i>whole event</i>. Choose that file below, or paste its text. Any whole-event .ics works (Swapcard, Cvent and others export them too).</div>
     <div class="form" style="margin-top:8px"><input type="file" id="impFile" accept=".ics,.json,text/calendar,application/json"></div>
     <h3>From a link</h3>
-    <div class="form"><input id="impUrl" placeholder="https://yourevent.sched.com/all.ics" value="${esc(store.get('impUrl',''))}"><input id="impRelay" placeholder="${DEFAULT_RELAY?'Relay URL (optional; empty uses the public NowLine relay)':'Relay URL, e.g. https://relay.example.workers.dev/?url='}" value="${esc(store.get('impRelay',''))}"></div>
+    <div class="form"><input id="impUrl" placeholder="https://yourevent.sched.com/all.ics" value="${esc(store.get('impUrl',''))}"><input id="impRelay" placeholder="${DEFAULT_RELAY?'Relay URL (optional; empty uses the public NowLine relay)':'Relay URL, e.g. https://relay.example.workers.dev/?url='}" value="${esc(store.get('impRelay',''))}"><input id="impVenue" placeholder="Venue file URL (optional): buildings and walk times, see docs/importing.md" value="${esc(store.get('impVenue',''))}"></div>
     <div class="row" style="margin-top:6px"><button class="btn" id="impFetch">Fetch</button></div>
     <div class="note" style="margin-top:4px">Most schedule sites don't let browsers fetch their feeds directly, so fetching by link goes through a small relay${DEFAULT_RELAY?'':' (a Cloudflare Worker; see docs/relay.md). Without one, download the file and choose it above'}.</div>
     <h3>Or paste</h3>
@@ -941,21 +949,89 @@ function openImport(){
   $('imp').oninput=preview;
   $('impFile').onchange=e=>{const f=e.target.files[0]; if(!f) return; f.text().then(t=>{$('imp').value=t;preview();});};
   $('impFetch').onclick=async()=>{
-    const u=$('impUrl').value.trim(), typed=$('impRelay').value.trim(), r=typed||DEFAULT_RELAY; store.set('impUrl',u); store.set('impRelay',typed);
-    if(!/^https:\/\//.test(u)){ $('impErr').textContent='Enter an https:// link.'; return; }
+    const u=$('impUrl').value.trim(), typed=$('impRelay').value.trim(), r=typed||CFG.relay||DEFAULT_RELAY, vu=$('impVenue').value.trim(); store.set('impUrl',u); store.set('impRelay',typed); store.set('impVenue',vu);
+    if(!/^https:\/\//.test(u)||vu&&!/^https:\/\//.test(vu)){ $('impErr').textContent='Enter an https:// link.'; return; }
     $('impErr').textContent=''; $('impInfo').textContent='Fetching…';
-    try{ const text=await fetchFeed(u,r); $('imp').value=text; fetched={text,feed:u,relay:r||null}; preview(); }
+    try{ const [text,venue]=await Promise.all([fetchFeed(u,r),vu?fetchVenue(vu,r):null]); $('imp').value=text; fetched={text,feed:u,relay:r||null,venue,venueUrl:vu||null}; preview(); }
     catch(e){ $('impInfo').textContent=''; $('impErr').textContent='Could not fetch it ('+e.message+'). Download the file and choose it above, or set a relay URL.'; }
   };
   $('doImp').onclick=()=>{
     try{
       let d=parseAny($('imp').value);
       if($('rebase').checked){ const ev=resolveZones(d,loadZoneSettings(store,d.name),deviceZone()).event; d=rebaseToToday(rezone(d,ev),ev); }
-      if(fetched&&fetched.text===$('imp').value) d.source={feed:fetched.feed,relay:fetched.relay};
+      if(fetched&&fetched.text===$('imp').value){ if(fetched.venue) d=applyVenue(d,fetched.venue); d.source={feed:fetched.feed,relay:fetched.relay,...(fetched.venue?{venue:fetched.venueUrl}:{})}; }
       data=d; store.set('data',d); S.hidden.clear(); store.set('hidden',[]); boot(); closeSheet();
     }catch(e){$('impErr').textContent='Could not read that: '+e.message;}
   };
 }
+
+/* ---------- organizer: venue overlay, nowline.config.json, attendee + embed modes, print all signs ---------- */
+const Q=new URLSearchParams(location.search);
+const EMBED=Q.get('embed')==='1';
+if(EMBED){ store.set=()=>{}; store.del=()=>{}; }   // an embedded copy never writes the host page's storage
+let CFG={};
+// nowline.config.json is requested by an inline script in index.html (in parallel with loading the modules);
+// a 404, bad JSON or a slow answer all mean the defaults
+async function loadConfig(){
+  const p=window.NOWLINE_CONFIG||fetch('nowline.config.json',{cache:'no-cache'}).then(r=>r.ok?r.json():null);
+  const raw=await Promise.race([Promise.resolve(p).catch(()=>null),sleep(1500).then(()=>null)]);
+  return sanitizeConfig(raw,location.href);
+}
+function applyConfig(c){
+  Object.entries(c.colors||{}).forEach(([k,v])=>document.documentElement.style.setProperty('--'+k,v));
+  if(c.name) document.title=c.name+' · NowLine';
+  if(c.logo){ const img=document.createElement('img'); img.className='logo'; img.src=c.logo; img.alt=c.name||''; document.querySelector('header .brand').before(img); }
+  if(c.tour===false) $('tourBtn').style.display='none';
+}
+// attendee mode hides the .org-only controls; ?admin or organizerTools:true keeps them
+function setModes(sign){
+  const attendee=!(Q.has('admin')||CFG.organizerTools===true)&&!!(sign.feed||sign.room||CFG.feed);
+  document.body.classList.toggle('attendee',attendee); document.body.classList.toggle('embed',EMBED);
+}
+async function fetchVenue(u,r){
+  try{ return JSON.parse(await fetchFeed(u,r)); }catch(e){ throw new Error('venue file: '+e.message); }
+}
+// a feed plus its optional venue overlay; a broken venue file doesn't stop the schedule from loading
+async function fetchSchedule(feed,relay,venue){
+  const [text,v]=await Promise.all([fetchFeed(feed,relay),venue?fetchVenue(venue,relay).catch(e=>{console.warn('NowLine: '+e.message);return null;}):null]);
+  let d=parseAny(text);
+  if(v) try{ d=applyVenue(d,v); }catch(e){ console.warn('NowLine: venue file ignored: '+e.message); }
+  d.source={feed,relay:relay||null,...(venue?{venue}:{})};
+  return d;
+}
+// config feed: used instead of the demo, and replaces an older config feed, but never a schedule the person loaded
+async function loadConfigFeed(){
+  const s=data.source||{};
+  if(s.feed===CFG.feed&&(s.venue||null)===(CFG.venue||null)){ handleHash(); return; }
+  if(!data.name.startsWith('Demo')&&!s.config){ handleHash(); return; }
+  try{
+    const d=await fetchSchedule(CFG.feed,CFG.relay||DEFAULT_RELAY||null,CFG.venue||null); d.source.config=true;
+    data=d; store.set('data',d); S.hidden.clear(); store.set('hidden',[]); boot(); handleHash();
+  }catch(e){
+    openSheet(`<h2>Couldn't load the schedule</h2><div class="note">This site's schedule at ${esc(CFG.feed)} couldn't be loaded (${esc(e.message)}). Check your connection and reload the page.</div><div class="row"><button class="btn" id="closeS">Close</button></div>`);
+    $('closeS').onclick=closeSheet;
+  }
+}
+// embedded: load the linked feed without asking and keep it in the URL (nothing is stored, so a reload needs it)
+async function loadEmbedFeed(sign){
+  try{ data=await fetchSchedule(sign.feed,sign.relay,sign.venue); boot(); handleHash(); }
+  catch(e){ $('strip').innerHTML=`<div class="empty">Couldn't load the schedule (${esc(e.message)}).</div>`; }
+}
+// QR density: past ~300 characters the code gets too fine to scan from across a hallway
+function signLenNote(url){
+  const n=url.length;
+  return n>300?`<div class="warnbox sglen" data-len="${n}">⚠ Long link (${n} characters): this QR code is dense and harder to scan. Use a shorter page link or feed URL.</div>`
+    :`<div class="note sglen" data-len="${n}">QR link: ${n} characters</div>`;
+}
+// every room's sign, one per printed page (see @media print in index.html)
+async function printAllSigns(base,copy){
+  let box=$('printSigns'); if(!box){ box=document.createElement('div'); box.id='printSigns'; box.className='print-only'; document.body.appendChild(box); }
+  box.innerHTML=data.venues.map(v=>`<div class="psign"><img alt="QR sign for ${esc(v.name)}" src="${signImage(v,base,copy)}"></div>`).join('');
+  await Promise.all([...box.querySelectorAll('img')].map(i=>i.decode?i.decode().catch(()=>{}):null));
+  document.body.classList.add('printing');
+  try{ window.print(); }catch(e){}
+}
+window.addEventListener('afterprint',()=>document.body.classList.remove('printing'));
 
 /* ---------- boot ---------- */
 function boot(){
@@ -982,7 +1058,7 @@ function seedDemoAgenda(){
 async function loadFromSign(sign){
   openSheet(`<h2>Loading the schedule…</h2><div class="note">Fetching the schedule ${sign.room?'for the room sign you scanned':'from the link you opened'}.</div>`);
   try{
-    const d=parseAny(await fetchFeed(sign.feed,sign.relay)); d.source={feed:sign.feed,relay:sign.relay};
+    const d=await fetchSchedule(sign.feed,sign.relay,sign.venue);
     if(sign.tz&&validZone(sign.tz)&&!validZone(d.tz)) saveZoneSettings(store,d.name,{...loadZoneSettings(store,d.name),event:sign.tz});
     data=d; store.set('data',d); S.hidden.clear(); store.set('hidden',[]); boot(); closeSheet();
     history.replaceState(null,'',withoutFeed(location.href)); handleHash();
@@ -992,7 +1068,7 @@ async function loadFromSign(sign){
   }
 }
 function signFeed(sign){
-  if(data.source&&data.source.feed===sign.feed){ history.replaceState(null,'',withoutFeed(location.href)); handleHash(); return; }
+  if(data.source&&data.source.feed===sign.feed&&(data.source.venue||null)===sign.venue){ history.replaceState(null,'',withoutFeed(location.href)); handleHash(); return; }
   if(data.name.startsWith('Demo')){ loadFromSign(sign); return; }
   let host=sign.feed; try{host=new URL(sign.feed).hostname;}catch(e){}
   openSheet(`<h2>Load this ${sign.room?"sign's":'shared'} schedule?</h2><div class="note">This ${sign.room?'room sign':'link'} uses a schedule from <b>${esc(host)}</b>. Loading it replaces “${esc(data.name)}” on this device. Your stars and blocks are kept per schedule.</div>
@@ -1000,12 +1076,16 @@ function signFeed(sign){
   $('sfGo').onclick=()=>loadFromSign(sign);
   $('closeS').onclick=()=>{closeSheet(); history.replaceState(null,'',withoutFeed(location.href)); handleHash();};
 }
+CFG=await loadConfig(); applyConfig(CFG);
 data = store.get('data',null) || demoData();
 if(data.name.startsWith('Demo')) data=demoData();  // always regenerate demo around today
 boot();
 const sign=parseSignLink(location.href);
-if(sign.feed) signFeed(sign); else handleHash();
-// a first scan should land on the room, not the tour; it's still offered on the next visit
-if(location.hash==='#tour' || (!sign.feed && !store.get('seenTour',false))){ store.set('seenTour',true); tourIntro(); }
+setModes(sign);
+if(sign.feed) EMBED?loadEmbedFeed(sign):signFeed(sign); else if(CFG.feed) loadConfigFeed(); else handleHash();
+// a first scan (or share link, or a self-hosted event's own page) should land on the schedule, not the tour;
+// it's still offered on the next plain visit
+const quietStart=sign.feed||sign.room||CFG.feed;
+if(!EMBED&&CFG.tour!==false&&(location.hash==='#tour' || (!quietStart && !store.get('seenTour',false)))){ store.set('seenTour',true); tourIntro(); }
 setInterval(()=>tick(), 250);
 window.addEventListener('resize',()=>tick());

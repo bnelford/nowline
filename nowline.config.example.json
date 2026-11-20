@@ -1,0 +1,10 @@
+{
+  "name": "My Conference 2026",
+  "logo": "assets/brand/logo.svg",
+  "colors": { "accent": "#7cc4ff", "now": "#ff4d5e", "bg": "#0e1116" },
+  "feed": "https://myconf2026.sched.com/all.ics",
+  "venue": "venue.json",
+  "relay": "https://nowline-relay.nelfordbc.workers.dev/?url=",
+  "tour": false,
+  "organizerTools": false
+}

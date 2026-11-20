@@ -235,7 +235,7 @@ describe('sign links: optional tz=', () => {
     expect(new URL(roomLink('https://x.org/', { id: 'a' }, { feed })).searchParams.has('tz')).toBe(false);
     const link = roomLink('https://x.org/?tz=Old/Zone', { id: 'a' }, { feed, tz: 'Europe/Brussels' });
     expect(new URL(link).searchParams.getAll('tz')).toEqual(['Europe/Brussels']);
-    expect(parseSignLink(link)).toEqual({ room: 'here-a', feed, relay: null, tz: 'Europe/Brussels' });
+    expect(parseSignLink(link)).toEqual({ room: 'here-a', feed, relay: null, tz: 'Europe/Brussels', venue: null });
   });
   it('ignores tz without a feed or when malformed, and strips it with the feed', () => {
     expect(parseSignLink('https://x.org/?tz=Europe/Brussels#here-a').tz).toBeNull();

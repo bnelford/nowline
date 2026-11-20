@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { normalize, finish, hm, MIN, PALETTE } from '../../src/schedule.js';
+import { normalize, finish, hm, MIN, PALETTE, applyVenue } from '../../src/schedule.js';
+import { walkBetween } from '../../src/agenda.js';
 import { SAMPLE_SIMPLE } from '../../src/samples.js';
 
 const load = (f) => JSON.parse(readFileSync(new URL('../../fixtures/' + f, import.meta.url), 'utf8'));
@@ -138,5 +139,79 @@ describe('finish', () => {
       s: { name: 's', color: PALETTE[1], walk: {} },
     });
     expect(d.venues.map((v) => v.color)).toEqual([PALETTE[0], PALETTE[1]]);
+  });
+});
+
+describe('applyVenue', () => {
+  // pretalx: rooms "Main Stage" and "Room B", one generated building ("venue") with 1-minute walks
+  const base = () => normalize(load('pretalx-schedule.json'));
+  const venue = {
+    buildings: {
+      hall: { name: 'Hall', color: '#112233', walk: { hall: 1, annex: 6 } },
+      annex: { name: 'Annex', color: '#445566', walk: { annex: 1, hall: 6 } },
+    },
+    rooms: { 'main stage': { building: 'hall', where: 'Ground floor' }, 'Room B': { building: 'annex', where: 'Up the stairs' } },
+    routes: { 'hall>annex': 'Cross the courtyard.' },
+  };
+
+  it('replaces placeholder walks with the venue file’s, matching rooms by case-insensitive name', () => {
+    const d0 = base();
+    expect(walkBetween(d0, 'Main Stage', 'Room B')).toBe(1);
+    const d = applyVenue(d0, venue);
+    expect(walkBetween(d, 'Main Stage', 'Room B')).toBe(6);
+    expect(d.venues.find((v) => v.id === 'Room B')).toMatchObject({ building: 'annex', where: 'Up the stairs', color: '#445566' });
+    expect(d.buildings).toEqual(venue.buildings);
+    expect(d.routes).toEqual({ 'hall>annex': 'Cross the courtyard.' });
+    expect(d.sessions).toBe(d0.sessions);
+    expect(d0.venues[0].building).toBe('venue');   // pure: the input is untouched
+  });
+  it('matches by room id before name, and keeps the feed’s building for unmatched rooms', () => {
+    const d0 = normalize({ venues: [{ id: 'r1', name: 'Alpha', building: 'b' }, { id: 'r2', name: 'r1' }],
+      sessions: [{ title: 'x', start: '2026-11-12T09:00Z', end: '2026-11-12T10:00Z', venue: 'r1' }, { title: 'y', start: '2026-11-12T09:00Z', end: '2026-11-12T10:00Z', venue: 'r2' }] });
+    const d = applyVenue(d0, { buildings: { n: { name: 'North' } }, rooms: { r1: { building: 'n' } } });
+    expect(d.venues.map((v) => [v.id, v.building])).toEqual([['r1', 'n'], ['r2', 'venue']]);
+    expect(Object.keys(d.buildings).sort()).toEqual(['n', 'venue']);
+    expect(walkBetween(d, 'r1', 'r2')).toBe(8);    // no walk given between them: the usual default
+  });
+  it('drops cached map positions so the map is laid out again', () => {
+    const d0 = base(); d0.site = { w: 1 }; d0.venues[0].map = { x: 1, y: 1 }; d0.buildings.venue.map = { x: 1 };
+    const d = applyVenue(d0, venue);
+    expect(d.site).toBeUndefined();
+    expect(d.venues.every((v) => !('map' in v))).toBe(true);
+  });
+  it('rejects or neutralizes hostile input', () => {
+    for (const bad of [null, 'x', 42, [], ['a']]) expect(() => applyVenue(base(), bad)).toThrow(/JSON object/);
+    const hostile = JSON.parse(`{
+      "buildings": {
+        "__proto__": { "name": "pwn", "walk": {} },
+        "constructor": { "name": "c" },
+        "a>b": { "name": "arrow" },
+        "${'x'.repeat(65)}": { "name": "long" },
+        "ok": { "name": "<img src=x onerror=alert(1)>\\u0000", "color": "#fff\\" onload=\\"x", "walk": { "ok": "1", "two": 3, "nope": 2, "__proto__": 5 }, "map": { "x": 1 } },
+        "two": { "name": 7, "color": "#abc", "walk": { "ok": -1, "two": 1e9 } },
+        "arr": [1, 2],
+        "nul": null
+      },
+      "rooms": {
+        "Main Stage": { "building": "__proto__", "where": "${'w'.repeat(300)}" },
+        "room b": { "building": "two", "where": { "toString": "x" } },
+        "__proto__": { "building": "ok" },
+        "No such room": { "building": "ok" },
+        "constructor": "nope"
+      },
+      "routes": { "ok>two": "<script>alert(1)</script>", "ok>nowhere": "x", "ok>two>ok": "x", "two>ok": 5 }
+    }`);
+    const d = applyVenue(base(), hostile);
+    expect(Object.getPrototypeOf(d.buildings)).toBe(Object.prototype);
+    expect({}.name).toBeUndefined();
+    expect(Object.keys(d.buildings).sort()).toEqual(['ok', 'two', 'venue']);
+    expect(d.buildings.ok).toEqual({ name: '<img src=x onerror=alert(1)>', color: PALETTE[0], walk: { two: 3 } });   // text, escaped by the UI
+    expect(d.buildings.two).toEqual({ name: 'two', color: '#abc', walk: {} });
+    const [main, b] = d.venues;
+    expect(main.building).toBe('venue');
+    expect(main.where).toHaveLength(200);
+    expect(b.building).toBe('two');
+    expect(b.where).toBeUndefined();
+    expect(d.routes).toEqual({ 'ok>two': '<script>alert(1)</script>' });   // plain text; directions() escapes it
   });
 });
