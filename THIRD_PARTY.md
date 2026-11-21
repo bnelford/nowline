@@ -43,7 +43,8 @@ SOFTWARE.
 ## Tour voiceover (`assets/tour/01.mp3` … `13.mp3`)
 
 - Generated offline from the tour script in `src/app.js` (`TOUR[].say`) with
-  **Kokoro-82M** by hexgrad, voice **`af_heart`**.
+  **Kokoro-82M** by hexgrad, voice **`af_heart`**, run through the kokoro-onnx runtime
+  (`scripts/tour-voice.py` regenerates them).
 - Model: <https://huggingface.co/hexgrad/Kokoro-82M>, licensed Apache-2.0
   (<https://www.apache.org/licenses/LICENSE-2.0>).
 - No model weights or Kokoro code are distributed with RoomHop, only the generated audio.
